@@ -1,5 +1,5 @@
 ---
-title: "Motrix: Modern Cross-Platform Download Manager"
+title: "Motrix: Full-Featured Cross-Platform Download Manager"
 sidebarTitle: "Introduction"
 description: "Motrix is a clean desktop download manager for HTTP, FTP, BitTorrent, and magnet links, with plugins, browser extensions, a CLI, and Docker server mode."
 ---
@@ -21,7 +21,7 @@ Motrix is a clean, full-featured desktop download manager that handles HTTP, FTP
   <Card title="CLI Client" icon="terminal" href="/integrations/cli">
     The official `@motrix/cli` package provides the `motrix` command for everyday shell use and AI agents, with automatic local-app discovery and remote pairing.
   </Card>
-  <Card title="Browser Extensions" icon="browser" href="/integrations/browser-extension">
+  <Card title="Browser Extensions" icon="browser">
     Chrome and Firefox extensions (Manifest V3) intercept downloads in one click and hand them off to Motrix over native messaging.
   </Card>
   <Card title="Docker Server" icon="docker" href="/server/docker-deployment">
@@ -37,9 +37,9 @@ Motrix extends beyond the desktop app with a shared protocol library, command-li
 |---------|--------------|--------------|
 | [`@motrix/mdxp`](https://github.com/motrixapp/mdxp) | npm package | Defines the shared JSON-RPC 2.0 wire schemas and Zod types for MDXP, with helpers for bidirectional connections |
 | [`@motrix/cli`](https://github.com/motrixapp/cli) | npm package | Provides the `motrix` command, automatically discovers a local desktop app, and pairs with remote instances |
-| Browser Extension | Browser extension | Intercepts downloads in Chrome and Firefox (Manifest V3), hands them off to Motrix, and pairs securely over native messaging |
-| Plugin SDK | Four npm packages | Includes `@motrix/plugin-manifest-schema`, `@motrix/plugin-api`, `@motrix/plugin-cli`, and `create-motrix-plugin` for developing, testing, and packaging plugins |
-| Builtin Plugins | Signed `.moext` packages | Filename Template, Page Scraper, and URL Resolver — three official plugins shipped with every release |
+| Motrix Browser Extension | Browser extension | Intercepts downloads in Chrome and Firefox (Manifest V3), hands them off to Motrix, and pairs securely with the desktop app over native messaging |
+| [Motrix Plugin SDK](https://github.com/motrixapp/plugin-sdk) | Four npm packages | Includes `@motrix/plugin-manifest-schema`, `@motrix/plugin-api`, `@motrix/plugin-cli`, and `create-motrix-plugin` for developing, testing, and packaging plugins |
+| [Builtin Plugins](https://github.com/motrixapp/builtin-plugins) | Signed `.moext` packages | Filename Template, Page Scraper, and URL Resolver — three official plugins shipped with every release |
 | Plugin Registry | Public JSON feed | Publishes plugin listings and install metadata at `dl.motrix.app/registry/plugins.json` for the website and in-app marketplace |
 
 ## Tech Stack

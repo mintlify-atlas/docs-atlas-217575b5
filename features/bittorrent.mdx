@@ -77,14 +77,14 @@ To run a one-off NAT diagnostic, open **Dashboard** and use the **NAT** tile's *
 
 ## Tracker Management
 
-Motrix ships with a built-in tracker manager that keeps your tracker pool up to date without manual intervention. Two sources are enabled by default:
+Motrix ships with a built-in tracker manager that keeps your tracker pool up to date without manual intervention. Two direct sources are enabled by default; two CDN mirrors are included but disabled by default and intended as fallbacks when GitHub is unreachable:
 
-| Source | ID | Description |
-|---|---|---|
-| ngosang/trackerslist (best) | `ngosang-best` | Direct from GitHub; community-curated best-performing trackers |
-| XIU2/TrackersListCollection (best) | `xiu2-best` | Direct from GitHub; independent curation |
-| ngosang/trackerslist (best, CDN) | `ngosang-best-cdn` | jsDelivr CDN mirror — use when GitHub is unreachable |
-| XIU2/TrackersListCollection (best, CDN) | `xiu2-best-cdn` | jsDelivr CDN mirror — use when GitHub is unreachable |
+| Source | ID | Enabled by default | Description |
+|---|---|---|---|
+| ngosang/trackerslist (best) | `ngosang-best` | ✓ Yes | Direct from GitHub; community-curated best-performing trackers |
+| XIU2/TrackersListCollection (best) | `xiu2-best` | ✓ Yes | Direct from GitHub; independent curation |
+| ngosang/trackerslist (best, CDN) | `ngosang-best-cdn` | No | jsDelivr CDN mirror of `ngosang-best` — enable when GitHub is unreachable |
+| XIU2/TrackersListCollection (best, CDN) | `xiu2-best-cdn` | No | jsDelivr CDN mirror of `xiu2-best` — enable when GitHub is unreachable |
 
 Key tracker settings:
 

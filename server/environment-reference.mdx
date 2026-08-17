@@ -1,5 +1,5 @@
 ---
-title: "Motrix Server Environment Variable Reference"
+title: "Motrix Server Docker Image Environment Variable Reference"
 sidebarTitle: "Environment Reference"
 description: "Complete reference for all environment variables supported by the Motrix Server Docker image, including paths, ports, plugins, and security options."
 ---
@@ -31,6 +31,10 @@ All Motrix Server configuration is done through environment variables. The inclu
 | `MOTRIX_FFMPEG_PATH` | _(auto-detect)_ | Optional absolute path to an FFmpeg binary; the official image does not include FFmpeg |
 | `MOTRIX_HOST_LANGUAGE` | _(system setting)_ | Override the server and plugin locale, e.g. `en-US` or `zh-CN` |
 | `LOG_LEVEL` | `info` | Pino log level written to container stdout; valid values are `trace`, `debug`, `info`, `warn`, `error`, `fatal` |
+
+<Note>
+  The internal aria2 RPC port (16800) is used only inside the container and is never listed here because it cannot be configured through environment variables and is never exposed on the Docker host. `MOTRIX_MDXP_PORT` (default 16801) is the MDXP client endpoint — it is a separate service from aria2.
+</Note>
 
 ## Adding Extra Download Roots
 

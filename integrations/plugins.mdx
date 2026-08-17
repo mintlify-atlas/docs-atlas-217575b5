@@ -1,7 +1,7 @@
 ---
-title: "Motrix Plugin System: Extend Downloads with Sandboxed Plugins"
+title: "Motrix Plugin System: Extend with Sandboxed Plugins"
 sidebarTitle: "Plugins"
-description: "Motrix plugins run in QuickJS sandboxes with declared permissions. Install from the in-app marketplace, GitHub, or a URL. Build custom plugins with the Plugin SDK."
+description: "Motrix plugins run in QuickJS sandboxes with declared permissions. Install from the marketplace, GitHub, or a URL, then build custom plugins with the SDK."
 ---
 
 Motrix plugins extend the download manager with URL resolvers, post-download actions, filename templates, and more. Every plugin runs in an isolated QuickJS sandbox — plugins have no direct access to the filesystem, network, or Node.js APIs. All capabilities must be declared in the plugin manifest and approved by the user before they are granted.
@@ -133,4 +133,5 @@ Motrix tracks where each plugin came from. The `source.type` field on an install
 | `builtin` | One of the three official built-in plugins bundled with Motrix |
 | `builtin-update` | A built-in plugin whose active code comes from a signature-verified overlay update rather than the original bundled seed |
 | `dev` | Loaded via `MOTRIX_PLUGIN_DEV_PATH` — bypasses the installer and consent flow entirely, for development use only |
-| `volume` / `env` | Operator-deployed plugins injected via Docker volume mount or environment variable, for server deployments |
+| `volume` | Operator-deployed plugin injected via a Docker volume mount, for server deployments |
+| `env` | Operator-deployed plugin injected via an environment variable, for server deployments |

@@ -1,5 +1,5 @@
 ---
-title: "MDXP: Motrix Download Exchange Protocol Reference"
+title: "MDXP: Motrix Download Exchange Protocol Reference Guide"
 sidebarTitle: "MDXP Protocol"
 description: "MDXP is the JSON-RPC 2.0 protocol powering Motrix's CLI, browser extensions, and external integrations over WebSocket and HTTP POST endpoints."
 ---
@@ -16,7 +16,7 @@ MDXP supports two primary transport mechanisms and a dedicated event stream for 
     default endpoint. Clients can send commands and queries at any time and
     receive pushed events without polling.
 
-    ```
+    ```text
     ws://localhost:16801
     ```
 
@@ -30,7 +30,7 @@ MDXP supports two primary transport mechanisms and a dedicated event stream for 
     JSON-RPC 2.0 response. Suitable for scripts, CI pipelines, and any
     scenario where a persistent connection is unnecessary.
 
-    ```
+    ```http
     POST http://localhost:16801/mdxp
     Content-Type: application/json
     Authorization: Bearer <token>
@@ -42,7 +42,7 @@ MDXP supports two primary transport mechanisms and a dedicated event stream for 
     cannot hold a WebSocket open can subscribe to this endpoint instead. Each
     event is a JSON-encoded MDXP notification frame.
 
-    ```
+    ```http
     GET http://localhost:16801/mdxp/events
     Authorization: Bearer <token>
     ```
@@ -58,9 +58,9 @@ Every MDXP message conforms to the [JSON-RPC 2.0 specification](https://www.json
 {
   "jsonrpc": "2.0",
   "id": "req-1",
-  "method": "task/add",
+  "method": "command:createDownload",
   "params": {
-    "url": "https://example.com/file.iso",
+    "uris": ["https://example.com/file.iso"],
     "saveDir": "/downloads"
   }
 }

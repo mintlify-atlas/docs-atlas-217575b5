@@ -1,7 +1,7 @@
 ---
-title: "Motrix Architecture: Four-Layer Codebase Design"
+title: "Motrix Codebase Architecture: Four-Layer Design Guide"
 sidebarTitle: "Architecture"
-description: "Explore Motrix's four-layer architecture: React renderer, app core, engine adapter, and aria2. Understand IPC, MDXP protocol, and the shared desktop/server core."
+description: "Explore Motrix four-layer architecture: React renderer, app core, engine adapter, and aria2, plus IPC and the shared desktop/server core."
 ---
 
 Motrix uses a strict four-layer architecture enforced by CI boundary checks. The same core — covering tasks, settings, plugins, bridge, NAT, tracker, stats, activity, and notifications — powers both the Electron desktop app and the Node.js headless server. Platform-specific capabilities such as system notifications and secret storage have separate implementations behind a consistent interface, keeping the core free of Electron and Node.js dependencies.

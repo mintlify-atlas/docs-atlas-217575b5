@@ -1,5 +1,5 @@
 ---
-title: "Deploy Motrix Server with Docker Compose"
+title: "Deploy Motrix Server with Docker Compose on Your NAS"
 sidebarTitle: "Docker Deployment"
 description: "Step-by-step guide to deploying Motrix Server on a NAS or home server using Docker Compose with bind mounts, named volumes, or a reverse proxy."
 ---
@@ -87,6 +87,90 @@ docker compose -f compose.named-volumes.yaml up -d --wait
   Do not pass `--volumes` to `docker compose down` when using named volumes — that option deletes them. Bind mounts are usually easier when downloads must also appear in a NAS shared folder.
 </Note>
 
+## Docker Run (Equivalent)
+
+This command is equivalent to the bind-mount Compose deployment and uses the same security flags:
+
+```bash
+mkdir -p motrix-data downloads
+MOTRIX_UID="$(id -u)"
+MOTRIX_GID="$(id -g)"
+chown "$MOTRIX_UID:$MOTRIX_GID" motrix-data downloads
+
+docker run -d \
+  --name motrix-server \
+  --init \
+  --restart unless-stopped \
+  --stop-timeout 120 \
+  --read-only \
+  --tmpfs /tmp:rw,noexec,nosuid,size=64m,mode=1777 \
+  --security-opt no-new-privileges:true \
+  --user "$MOTRIX_UID:$MOTRIX_GID" \
+  -e MOTRIX_PUBLIC_URL='http://nas.example.lan:8080' \
+  -e MOTRIX_MDXP_HOST=0.0.0.0 \
+  -p 8080:8080 \
+  -p 16801:16801 \
+  -v "$PWD/motrix-data:/data" \
+  -v "$PWD/downloads:/downloads" \
+  motrixapp/motrix-server:latest
+```
+
+`MOTRIX_MDXP_HOST=0.0.0.0` controls the MDXP listener inside the container. The two `-p` options publish those container ports on the Docker host: port 8080 for the Web UI and port 16801 for the MDXP client endpoint.
+
+## Network Publication Modes
+
+The listeners inside the container and the ports published on the Docker host are separate boundaries. The Web/API process listens on `0.0.0.0:8080` inside the container, and the Compose file sets the internal MDXP listener to `MOTRIX_MDXP_HOST=0.0.0.0` on port 16801. Those container-wide listeners let Docker forward traffic; they do not by themselves make either service public.
+
+The standard direct-LAN configuration keeps the existing defaults: both host ports bind to `0.0.0.0`, so trusted LAN devices can reach the Web service on 8080 and MDXP on 16801. The publication controls are independent:
+
+| Compose variable | Controls | Default and fallback |
+|------------------|----------|----------------------|
+| `MOTRIX_WEB_BIND_IP` | Host address publishing container port 8080 | `MOTRIX_BIND_IP`, then `0.0.0.0` |
+| `MOTRIX_MDXP_BIND_IP` | Host address publishing container port 16801 | `MOTRIX_BIND_IP`, then `0.0.0.0` |
+| `MOTRIX_BIND_IP` | Compatibility fallback for both services | `0.0.0.0` |
+
+Do not change `MOTRIX_MDXP_HOST` to `127.0.0.1`: that loopback belongs to the container, so Docker port forwarding and other containers cannot reach it.
+
+### Reverse Proxy on the Docker Host
+
+The included `compose.reverse-proxy.env` binds both published origin ports to the Docker host's loopback. It is intended for a reverse proxy running on that host:
+
+```bash
+export MOTRIX_PUBLIC_URL='https://motrix.example.com'
+docker compose --env-file compose.reverse-proxy.env -f compose.yaml up -d --wait
+```
+
+Configure the host proxy with separate upstreams for `127.0.0.1:8080` (Web UI/API) and `127.0.0.1:16801` (MDXP HTTP and SSE), and preserve cookies, authorization headers, and streaming responses.
+
+### Reverse Proxy in Another Container
+
+When the proxy is a container on the same user-defined Docker network, omit `ports` from the Motrix service entirely. Route the proxy to `server:8080` and `server:16801` over that private network, and publish only the proxy's TLS entry point. Keep both internal listeners on `0.0.0.0` so the proxy container can reach them.
+
+## Synology DSM 7 Container Manager
+
+DSM labels can vary slightly between Container Manager updates, but the deployment model is the same:
+
+1. Install **Container Manager** from Package Center.
+2. In File Station, create a project directory such as `/volume1/docker/motrix`, with `motrix-data` and `downloads` below it. You may instead make `downloads` a separate shared folder and replace the left side of that bind mount in `compose.yaml` with its absolute path.
+3. Choose a dedicated, non-administrator DSM account. Determine its numeric UID/GID with `id <account>` over an administrator SSH session, then give that numeric owner write access to both directories. Set `MOTRIX_UID` and `MOTRIX_GID` to the same values. DSM ACL access alone does not repair a mismatched Unix owner inside every container setup.
+4. In **Container Manager > Project**, create a project using that directory and import or paste `compose.yaml`. Set `MOTRIX_PUBLIC_URL` to the browser URL that other devices will use, for example `http://nas-name:8080`. Set any changed ports or UID/GID values in the Project environment.
+5. Build/start the Project. Container Manager should pull `motrixapp/motrix-server:latest`; it must not display a local image build.
+6. Wait for the service to become healthy, open the Web URL, and read `motrix-data/operator-token` from an administrator shell to unlock it.
+
+Do not enable "high privilege", mount the Docker socket, or grant access to the whole NAS filesystem. If DSM's reverse proxy runs in the host network context, use `compose.reverse-proxy.env` so both origins bind to host loopback.
+
+## fnOS Docker/Compose
+
+On fnOS, install Docker from the app store, then use its Compose/Project view:
+
+1. Create an application directory with separate `motrix-data` and `downloads` directories in Files. Do not put either directory on temporary container storage.
+2. Give both directories to a dedicated non-root numeric UID/GID. Use those numbers for `MOTRIX_UID` and `MOTRIX_GID`; do not work around a mismatch by running as root.
+3. Create a Compose project from `compose.yaml`. The relative mounts resolve below the selected project directory. If fnOS only accepts pasted YAML, replace `${...}` entries with the desired literal values or add the same values through its environment editor.
+4. Use `motrixapp/motrix-server:latest` for stable automatic upgrades, or an immutable SemVer tag for controlled upgrades. Docker chooses `amd64` or `arm64` from the manifest.
+5. Set `MOTRIX_PUBLIC_URL`, verify ports 8080 and 16801 are not already used, start the project, and wait for the health status before opening the Web UI.
+
+fnOS share permissions and the container's Unix UID/GID must both allow writes. If downloads appear in the container but not in Files, inspect the left-hand bind path and confirm it points to the intended fnOS storage pool.
+
 ## Pairing the CLI Client
 
 Remote CLI and agent clients connect through a device-code pairing flow. The client displays a short code, and the operator approves it in the Web UI. Once paired, the client stores a long-lived credential and reconnects automatically.
@@ -148,7 +232,7 @@ Start the pairing request on the client first, then enter the code shown by the 
   </Step>
 </Steps>
 
-## Health Check
+## Health Check and Diagnostics
 
 `GET /healthz` is public and only returns success after the HTTP service and aria2 are both ready. The `/api/diagnostics` endpoint requires the operator token and reports engine status, effective storage paths, allowed download roots, runtime UID, plugin status, and FFmpeg detection.
 
@@ -166,6 +250,19 @@ curl --fail \
 # Tail container logs
 docker compose logs --tail=200 server
 ```
+
+## Troubleshooting
+
+| Symptom | Check and correction |
+|---------|----------------------|
+| Pull returns 404 or `manifest unknown` | Confirm the repository/tag spelling and that an image-bearing release exists. Try the same immutable tag on the other registry (Docker Hub or GHCR); do not substitute a similarly named third-party image. |
+| `no matching manifest` | Confirm the NAS is 64-bit `amd64` or `arm64` with `docker info`; 32-bit ARM is unsupported. |
+| Startup reports `EACCES`, read-only, or a path failure | Compare `docker inspect ... .Config.User` with numeric ownership of both mounts. Correct ownership/ACLs; do not run privileged or as root. |
+| Port is already allocated | Change `MOTRIX_HTTP_PORT` or `MOTRIX_MDXP_PUBLIC_PORT`, and update `MOTRIX_PUBLIC_URL` if the Web port changes. |
+| Web UI opens but unlock fails | Read the current persistent `/data/operator-token`; do not use a token copied from another deployment. Verify the file is regular, base64url text, and mode `0600`. |
+| Download directory is rejected or files are missing from the NAS share | Use an absolute container path below `MOTRIX_ALLOWED_SAVE_DIRS`; verify the intended host directory is mounted at that exact path and writable by the runtime UID/GID. |
+| Plugin install fails | Inspect `/api/diagnostics` and logs, retain `/data`, confirm package/source trust and network/TLS access, and mount any `MOTRIX_PLUGIN_IMPORT_DIRS` explicitly. Do not enable unmanaged plugins for a normal `.moext`, URL, or registry install. |
+| Container is unhealthy after an upgrade | Inspect logs and diagnostics, verify both mounts, then roll back to the recorded immutable image and matching `/data` backup. |
 
 <Warning>
   Never run the container as root (UID 0) or with privileged mode. Always set proper ownership on mount directories to match the runtime UID before starting the service. A mount permission error is corrected by fixing ownership — not by escalating the container's privileges.

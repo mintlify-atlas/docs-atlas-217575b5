@@ -113,7 +113,7 @@ Two update modes exist:
   Enable **Local Peer Discovery (LPD)**. When true, aria2 broadcasts and listens for peer announcements on the local network, allowing peers on the same LAN to be found without a tracker.
 </ParamField>
 
-<ParamField path="seedRatio" type="number" default="1.0">
+<ParamField path="seedRatio" type="number" default="1">
   Stop seeding when the upload/download ratio reaches this value. Range: **0–100**. Set to `0` to seed indefinitely regardless of ratio (subject to `seedTime`).
 </ParamField>
 
@@ -198,7 +198,7 @@ These settings control the SQLite-backed download history provided by the Motrix
   "dnsMode": "auto",
   "btMaxPeers": 128,
   "btEnableLpd": true,
-  "seedRatio": 1.0,
+  "seedRatio": 1,
   "seedTime": 60,
   "fileAllocation": "none",
   "diskCache": 67108864,

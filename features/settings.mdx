@@ -1,5 +1,5 @@
 ---
-title: "Motrix App Settings and Preferences"
+title: "Motrix App Settings, Preferences, and Configuration"
 sidebarTitle: "Settings"
 description: "Configure Motrix appearance, behavior, notifications, protocols, and update channels through the Settings panel or programmatically via the IPC API."
 ---
@@ -15,8 +15,8 @@ These settings live in the `app` namespace and control startup, appearance, and 
 | `launchAtStartup` | boolean | `false` | Register Motrix with the OS login-item or systemd user service so it starts when you log in |
 | `theme` | `system` / `light` / `dark` | `system` | UI colour scheme; `system` follows the OS dark-mode preference |
 | `language` | locale string | `en-US` | Interface language. Supported values: `en-US` (English), `zh-CN` (Simplified Chinese), `zh-TW` (Traditional Chinese) |
-| `defaultSaveDir` | string (path) | `~/Downloads` | Default directory for new downloads. Seeded to the OS Downloads folder on first launch; empty string falls back to the same default |
-| `runMode` | `Standard` / … | `Standard` | Application run mode. `Standard` is the normal desktop mode |
+| `defaultSaveDir` | string (path) | `''` | Default directory for new downloads. An empty string is a sentinel: Motrix seeds the path to the OS Downloads folder (`~/Downloads`) on first launch. The UI never displays an empty value |
+| `runMode` | `Standard` / `TrayOnly` / `HideTray` | `Standard` | Application run mode. `Standard` is the normal desktop window mode; `TrayOnly` runs as a tray-only app with no main window; `HideTray` hides the tray icon |
 | `warnBeforeQuit` | boolean | `true` | Show a confirmation dialog when quitting while downloads are active. Read at quit time — no restart needed |
 | `traySpeedometer` | boolean | `false` | Display live download/upload speed in the system tray icon |
 

@@ -1,7 +1,7 @@
 ---
-title: "Contributing to Motrix: Build, Test, and Lint"
+title: "Contributing to Motrix: Build, Test, and Lint Guide"
 sidebarTitle: "Contributing"
-description: "Set up the Motrix development environment, run unit and E2E tests, lint with Biome, and build the desktop app or headless server."
+description: "Set up the Motrix development environment, run unit and E2E tests, lint with Biome, and build the Electron app or headless server."
 ---
 
 Contributing to Motrix requires Node.js 22 or later and pnpm. The repository uses Vite for building, Vitest for unit tests, Playwright for E2E tests, and Biome for linting and formatting. The same codebase powers both the Electron desktop app and the Node.js headless server, so changes to `src/core/` affect both targets.
@@ -11,7 +11,7 @@ Contributing to Motrix requires Node.js 22 or later and pnpm. The repository use
 Before cloning the repository, make sure you have the following installed:
 
 - **Node.js 22 or later** — required by both the build system and the runtime.
-- **pnpm 11.21.0** — specified in the `packageManager` field in `package.json`. Use exactly this version to match CI. Install it with `corepack enable && corepack prepare pnpm@11.21.0 --activate`.
+- **pnpm@11.21.0** — specified in the `packageManager` field in `package.json`. Use exactly this version to match CI. Install it with `corepack enable && corepack prepare pnpm@11.21.0 --activate`.
 
 After running `pnpm install`, a `postinstall` script automatically downloads the correct aria2 binary for your platform and rebuilds native modules (better-sqlite3) against the right Electron or Node ABI. You do not need to run these steps manually.
 

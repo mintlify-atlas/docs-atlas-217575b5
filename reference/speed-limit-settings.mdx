@@ -1,7 +1,7 @@
 ---
-title: "Speed Limit Settings Reference: Profiles, Turtle Mode, and Scheduling"
-sidebarTitle: "Speed Limit Settings"
-description: "Reference for Motrix speed limit settings including base/alt profiles, turtle mode, schedule, adaptive bandwidth, and video-app detection."
+title: "Speed Limit Settings: Profiles, Turtle Mode, and Scheduling"
+sidebarTitle: "Speed Limits"
+description: "Reference for Motrix speed limit settings including base and alt profiles, turtle mode, auto schedule, adaptive bandwidth, and video-app detection."
 ---
 
 Speed limit settings control the maximum download and upload rates applied to the aria2 engine. All speed values are in **bytes per second**; `0` means unlimited. Settings live in the `speedLimit` namespace of the Motrix settings store and are validated through `speedLimitSettingsSchema` (Zod). Changes are applied to the running engine via a hot RPC update — no restart is required.
@@ -203,6 +203,20 @@ The speed test subsystem calibrates `linkDown` and `linkUp` automatically. It sh
       "linkUp": 0,
       "headroomPercent": 80,
       "speedTest": {
+        "providers": [
+          {
+            "id": "cloudflare",
+            "label": "Cloudflare",
+            "download": { "url": "https://speed.cloudflare.com/__down", "sizeParam": "bytes" },
+            "upload": { "url": "https://speed.cloudflare.com/__up" }
+          },
+          {
+            "id": "apple",
+            "label": "Apple",
+            "download": { "url": "https://mensura.cdn-apple.com/api/v1/gm/large" },
+            "upload": null
+          }
+        ],
         "selectedProviderId": "cloudflare",
         "concurrency": 4,
         "maxDurationSec": 10,

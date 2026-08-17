@@ -1,7 +1,7 @@
 ---
-title: "IPC Events Reference: All Motrix Event Channels"
+title: "IPC Events Reference: All Motrix Event Channels (Full)"
 sidebarTitle: "IPC Events"
-description: "Complete reference for all Motrix IPC event channels emitted by the app core to update the renderer about download tasks, engine state, plugins, and settings."
+description: "Complete reference for Motrix IPC event channels emitted by the app core to update the renderer about tasks, engine state, plugins, and settings."
 ---
 
 Motrix events are emitted by the app core and received by the renderer (and MDXP subscribers) to drive UI state updates. Events are push-only — the receiving side never replies. Channel strings are declared in `src/shared/protocol/events.ts` and are the canonical identifiers used on both the Electron IPC bus and the MDXP wire. Events that carry payloads over the MDXP event stream are listed in `ForwardableEvents`; internal-only events (such as `event:engineFailureOccurred`) are noted where applicable.
@@ -179,7 +179,7 @@ Motrix events are emitted by the app core and received by the renderer (and MDXP
 
 ## Forwardable Events
 
-Events in `ForwardableEvents` (defined in `src/shared/protocol/forwardable-events.ts`) are the subset forwarded over the MDXP event stream to WebSocket and SSE subscribers. All task, engine, NAT, tracker, update, plugin, settings, and bridge lifecycle events are forwardable. The following events are **not** forwarded and remain internal to the main process:
+Events in `ForwardableEvents` (defined in `src/shared/protocol/forwardable-events.ts`) are the subset forwarded over the MDXP event stream to WebSocket and SSE subscribers. Task, engine, NAT, tracker, update, most plugin lifecycle, speed-limit, notification, and bridge events are forwardable. The following events are **not** forwarded and remain internal to the Electron main process or renderer only:
 
 - `event:engineFailureOccurred` — internal producer signal
 - `event:navigateTo` — renderer navigation only
@@ -187,9 +187,14 @@ Events in `ForwardableEvents` (defined in `src/shared/protocol/forwardable-event
 - `event:protocolUrl` — protocol handler dispatch only
 - `event:protocolTorrentFile` — file-association dispatch only
 - `event:setAddTaskMode` — add-task dialog state only
+- `event:torrentQueueSizeChanged` — renderer torrent queue display only
 - `event:appCrash` / `event:appError` — internal crash handling
 - `event:applicationMenuChanged` — menu structure update only
-- `event:tuningUpdated` — engine tuning only
+- `event:settingsChanged` — renderer settings sync only
+- `event:geoipUpdateProgress` / `event:geoipStatusChanged` — GeoIP update UI only
+- `event:pluginInstallConsentRequested` / `event:pluginInstallProgress` — installer UI only
+- `event:contributionIndexChanged` — renderer contribution index sync only
+- `event:pluginLog` / `event:pluginCommandInvoked` — renderer opt-in monitoring streams only
 
 <Tip>
   All channel strings are defined in `src/shared/protocol/events.ts` and typed

@@ -109,7 +109,11 @@ Plugins run inside QuickJS sandboxes. They cannot access Node.js APIs, the host 
 
 | Symptom | Fix |
 |---------|-----|
-| Web UI opens but unlock fails | Read the current `/data/operator-token`; do not use a token copied from another deployment. Verify the file is regular, base64url text, and mode `0600`. |
-| `EACCES` or read-only error at startup | Compare `docker inspect ... .Config.User` with the numeric ownership of both mounts. Correct ownership with `chown`; do not run privileged or as root. |
-| Port already allocated | Change `MOTRIX_HTTP_PORT` or `MOTRIX_MDXP_PUBLIC_PORT` in the environment, and update `MOTRIX_PUBLIC_URL` if the Web port changes. |
-| `manifest unknown` on pull | Confirm the registry and tag spelling, and that an image-bearing release exists. Try the same immutable tag on the other registry (Docker Hub or GHCR). |
+| Pull returns 404 or `manifest unknown` | Confirm the registry and tag spelling, and that an image-bearing release exists. Try the same immutable tag on the other registry (Docker Hub or GHCR); do not substitute a similarly named third-party image. |
+| `no matching manifest` | Confirm the NAS is 64-bit `amd64` or `arm64` with `docker info`; 32-bit ARM is unsupported. |
+| Startup reports `EACCES`, read-only, or a path failure | Compare `docker inspect ... .Config.User` with the numeric ownership of both mounts. Correct ownership with `chown`; do not run privileged or as root. |
+| Port is already allocated | Change `MOTRIX_HTTP_PORT` or `MOTRIX_MDXP_PUBLIC_PORT` in the environment, and update `MOTRIX_PUBLIC_URL` if the Web port changes. |
+| Web UI opens but unlock fails | Read the current persistent `/data/operator-token`; do not use a token copied from another deployment. Verify the file is regular, base64url text, and mode `0600`. |
+| Download directory is rejected or files are missing from the NAS share | Use an absolute container path below `MOTRIX_ALLOWED_SAVE_DIRS`; verify the intended host directory is mounted at that exact path and writable by the runtime UID/GID. |
+| Plugin install fails | Inspect `/api/diagnostics` and logs, retain `/data`, confirm package/source trust and network/TLS access, and mount any `MOTRIX_PLUGIN_IMPORT_DIRS` explicitly. Do not enable unmanaged plugins for a normal `.moext`, URL, or registry install. |
+| Container is unhealthy after an upgrade | Inspect logs and diagnostics, verify both mounts, then roll back to the recorded immutable image and matching `/data` backup. |

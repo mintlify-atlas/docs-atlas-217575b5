@@ -28,12 +28,12 @@ Tagged releases publish the same image to both registries. Docker Hub is the def
 
 Every release publishes the same manifest digest to both registries before any floating tag is advanced. Prereleases never update `latest`, `stable`, or any floating major or minor tag.
 
-| Tag | Behavior | Use |
-|-----|----------|-----|
+| Tag | Behavior | Recommended use |
+|-----|----------|-----------------|
 | `:2.3.4` | Immutable release | Production and rollback |
 | `:2.3` | Newest stable patch in 2.3 | Automatic patch upgrades |
 | `:2` | Newest stable release in major 2 | Automatic minor and patch upgrades |
-| `:stable` | Newest stable release | Stable channel |
+| `:stable` | Newest stable release | Users who explicitly want the stable channel |
 | `:latest` | Same digest as `stable` | NAS UI default |
 | `:2.3.4-beta.2` | Immutable prerelease | Evaluation only |
 
@@ -44,7 +44,11 @@ The container exposes two independent services on separate ports. They serve dif
 | Port | Service |
 |------|---------|
 | `8080` | Web UI, operator API, `GET /healthz` |
-| `16801` | MDXP client endpoint (`POST /mdxp`, `GET /mdxp/events`) |
+| `16801` | MDXP client endpoint (`POST /mdxp`, `GET /mdxp/events`, device-code pairing) |
+
+<Note>
+  The internal aria2 RPC port (16800) is used only inside the container and is never exposed on the host. Port 16801 is the MDXP endpoint — it is not the aria2 RPC port.
+</Note>
 
 ## Persistent Storage
 

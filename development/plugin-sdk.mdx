@@ -1,7 +1,7 @@
 ---
-title: "Build Motrix Plugins with the Plugin SDK"
+title: "Motrix Plugin SDK: Build, Test, and Package Plugins"
 sidebarTitle: "Plugin SDK"
-description: "Develop, test, and package Motrix plugins using the Plugin SDK. Plugins hook into download lifecycle events, contribute commands and settings, and run in QuickJS sandboxes."
+description: "Develop and package Motrix plugins with the Plugin SDK. Plugins hook into download lifecycle events, contribute commands, and run in QuickJS sandboxes."
 ---
 
 The Motrix Plugin SDK is a collection of four npm packages that provide everything you need to scaffold, develop, test, package, and distribute Motrix plugins. Plugins hook into download lifecycle events, contribute callable commands and user-configurable settings, and run in isolated QuickJS sandboxes with a fine-grained permissions model.
@@ -75,15 +75,31 @@ Every plugin must include a `motrix-plugin.json` manifest at its root. The manif
 | `version` | SemVer version string |
 | `description` | Short description shown in the marketplace |
 | `author` | Plugin author name or contact |
+| `categories` | Array of category strings used for marketplace filtering (required) |
+| `keywords` | Optional array of search keywords |
 | `engines.motrix` | SemVer range specifying compatible Motrix versions |
+| `engines.ffmpeg` | Optional SemVer range for plugins that require ffmpeg |
 | `main` | Entry point path (compiled to a single ES2020 module) |
+| `requestedHeapMB` | Optional memory hint for the QuickJS sandbox heap size |
 | `permissions` | Required capabilities; shown to the user before install |
 | `optionalPermissions` | User-grantable optional capabilities |
 | `hostPermissions` | URL patterns granting network access to specific origins |
+| `invokesCommands` | Optional list of external command IDs the plugin may call |
 | `activationEvents` | Conditions that start the plugin VM (e.g., `onStartup`, `onDownload`) |
 | `contributes.hooks` | Lifecycle hooks the plugin handles |
-| `contributes.commands` | Callable commands exposed to other plugins or the UI |
+| `contributes.commands` | Callable commands exposed to other plugins or the UI (see fields below) |
 | `contributes.configuration` | JSON Schema describing plugin settings |
+
+Each entry in `contributes.commands` supports these fields:
+
+| Field | Description |
+|-------|-------------|
+| `id` | Unique command identifier within the plugin |
+| `title` | Human-readable command label shown in the UI |
+| `icon` | Optional icon name for the command |
+| `public` | If `true`, the command is callable by other plugins and the UI; `argsSchema` is required when `true` |
+| `argsSchema` | JSON Schema for the command's input arguments (required when `public: true`) |
+| `resultSchema` | JSON Schema for the command's return value |
 
 A minimal manifest looks like this:
 
@@ -95,6 +111,7 @@ A minimal manifest looks like this:
   "version": "1.0.0",
   "description": "An example Motrix plugin.",
   "author": "Your Name",
+  "categories": ["utility"],
   "engines": { "motrix": ">=2.0.0" },
   "main": "dist/index.js",
   "permissions": [],
