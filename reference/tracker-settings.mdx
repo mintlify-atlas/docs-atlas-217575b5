@@ -1,0 +1,140 @@
+---
+title: "Tracker Settings Reference: BitTorrent Tracker Lists"
+sidebarTitle: "Tracker Settings"
+description: "Configure BitTorrent tracker list sources, auto-sync intervals, health probing, blacklists, and maximum tracker counts in Motrix."
+---
+
+Motrix automatically manages BitTorrent tracker lists sourced from curated community repositories. Healthy, up-to-date trackers are injected into every torrent task, improving peer discovery and download speeds — especially on public torrents with stale or absent tracker URLs. Settings live in the `tracker` namespace of the Motrix settings store and are validated by `trackerSettingsSchema` (Zod).
+
+<Info>
+  Tracker injection is additive: Motrix appends managed trackers to whatever trackers are already embedded in the torrent file or magnet link. The original trackers are never removed.
+</Info>
+
+---
+
+## Built-in Tracker Sources
+
+Motrix ships four built-in tracker sources. Each source can be individually enabled or disabled. The two CDN variants (jsDelivr) are disabled by default — enable them if the primary GitHub raw URLs are slow or blocked in your region.
+
+| ID | Label | URL | Enabled |
+|----|-------|-----|---------|
+| `ngosang-best` | ngosang/trackerslist (best) | `https://raw.githubusercontent.com/ngosang/trackerslist/master/trackers_best.txt` | ✅ Yes |
+| `ngosang-best-cdn` | ngosang/trackerslist (best, CDN) | `https://cdn.jsdelivr.net/gh/ngosang/trackerslist/trackers_best.txt` | ❌ No |
+| `xiu2-best` | XIU2/TrackersListCollection (best) | `https://raw.githubusercontent.com/XIU2/TrackersListCollection/master/best.txt` | ✅ Yes |
+| `xiu2-best-cdn` | XIU2/TrackersListCollection (best, CDN) | `https://cdn.jsdelivr.net/gh/XIU2/TrackersListCollection/best.txt` | ❌ No |
+
+<Tip>
+  Enable a CDN mirror alongside its primary source for automatic fallback if the raw GitHub URL is unreachable. Duplicate trackers from multiple sources are de-duplicated before injection.
+</Tip>
+
+---
+
+## Built-in Blacklist Sources
+
+Motrix also maintains a blacklist of known bad trackers. Trackers matched by a blacklist source are excluded even if they appear in an enabled tracker source.
+
+| ID | Label | URL | Enabled |
+|----|-------|-----|---------|
+| `xiu2-blacklist` | XIU2/TrackersListCollection (blacklist) | `https://cdn.jsdelivr.net/gh/XIU2/TrackersListCollection/blacklist.txt` | ✅ Yes |
+
+---
+
+## Sync Settings
+
+<ParamField path="autoSync" type="boolean" default="true">
+  Automatically synchronise tracker lists from all enabled sources on a schedule. When disabled, lists are only updated when you trigger a manual sync.
+</ParamField>
+
+<ParamField path="syncIntervalHours" type="integer (hours)" default="12">
+  How often Motrix fetches fresh tracker lists. The value is clamped to **1–168 hours** (1 hour to 1 week). Changes take effect at the next scheduled sync cycle.
+</ParamField>
+
+---
+
+## Source Settings
+
+<ParamField path="sourcesEnabled" type="boolean" default="true">
+  Master switch for tracker source injection. When `false`, Motrix does not append any managed trackers to torrent tasks — behaves as if all sources were disabled.
+</ParamField>
+
+<ParamField path="sources" type="TrackerSource[]" default="(built-in sources)">
+  Array of tracker source objects. Each object has the following shape:
+
+  ```ts
+  interface TrackerSource {
+    id: string       // unique identifier
+    label: string    // human-readable name shown in the UI
+    url: string      // full URL to a newline-delimited tracker list
+    builtin: boolean // true for sources shipped with Motrix
+    enabled: boolean // whether this source is active
+    cdn: boolean     // informational: true for CDN-backed mirrors
+  }
+  ```
+
+  You can add custom sources by appending objects to this array via the Settings panel or `command:updateSettings`.
+</ParamField>
+
+---
+
+## Health Probing
+
+Motrix can probe each tracker before injecting it, filtering out trackers that are slow or unresponsive.
+
+<ParamField path="probeEnabled" type="boolean" default="true">
+  Enable health-check probing for trackers before they are injected into a torrent task. When `false`, all trackers from enabled sources are injected without any reachability check.
+</ParamField>
+
+<ParamField path="probeTimeoutMs" type="integer (ms)" default="5000">
+  Maximum time in milliseconds to wait for a response from a tracker during a health probe. Range: **1000–30000 ms**. Trackers that do not respond within this window are marked unhealthy.
+</ParamField>
+
+<ParamField path="healthyThresholdMs" type="integer (ms)" default="3000">
+  Maximum acceptable round-trip response time for a tracker to be considered healthy. Range: **500–10000 ms**. Trackers that respond slower than this threshold are excluded even if they do eventually respond.
+</ParamField>
+
+<ParamField path="minSuccessRate" type="number (0–1)" default="0.5">
+  Minimum success rate across recent probes for a tracker to be considered healthy. Range: **0.0–1.0**. For example, `0.5` means the tracker must have responded successfully in at least half of recent probe attempts.
+</ParamField>
+
+---
+
+## Injection Limits
+
+<ParamField path="maxTrackerCount" type="integer" default="50">
+  Maximum number of trackers injected into each torrent task. The value is clamped to **5–200**. Trackers are ranked by health score; the top `maxTrackerCount` healthy trackers are selected.
+</ParamField>
+
+---
+
+## Blacklist Settings
+
+<ParamField path="blacklistEnabled" type="boolean" default="true">
+  Apply the blacklist to filter out known bad trackers before injection. Disabling this allows blacklisted trackers through — not recommended for normal use.
+</ParamField>
+
+<ParamField path="blacklistSources" type="TrackerSource[]" default="(built-in blacklist sources)">
+  Array of blacklist source objects. Follows the same `TrackerSource` shape as `sources`. Entries matched by any enabled blacklist source are removed from the final tracker list regardless of health score.
+</ParamField>
+
+---
+
+## Custom Tracker Source Example
+
+```json
+{
+  "sources": [
+    {
+      "id": "my-custom-list",
+      "label": "My Custom Trackers",
+      "url": "https://example.com/trackers.txt",
+      "builtin": false,
+      "enabled": true,
+      "cdn": false
+    }
+  ]
+}
+```
+
+<Note>
+  Custom source URLs must return a plain-text list of tracker announce URLs, one per line, with blank lines used as separators (the standard format used by trackerslist and TrackersListCollection).
+</Note>

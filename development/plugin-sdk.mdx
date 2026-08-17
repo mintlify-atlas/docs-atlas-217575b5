@@ -1,0 +1,183 @@
+---
+title: "Build Motrix Plugins with the Plugin SDK"
+sidebarTitle: "Plugin SDK"
+description: "Develop, test, and package Motrix plugins using the Plugin SDK. Plugins hook into download lifecycle events, contribute commands and settings, and run in QuickJS sandboxes."
+---
+
+The Motrix Plugin SDK is a collection of four npm packages that provide everything you need to scaffold, develop, test, package, and distribute Motrix plugins. Plugins hook into download lifecycle events, contribute callable commands and user-configurable settings, and run in isolated QuickJS sandboxes with a fine-grained permissions model.
+
+## SDK Packages
+
+| Package | Purpose |
+|---------|---------|
+| `@motrix/plugin-manifest-schema` | Zod schema for `motrix-plugin.json` manifest validation |
+| `@motrix/plugin-api` | TypeScript types for the plugin runtime API |
+| `@motrix/plugin-cli` | `motrix-plugin` CLI for validation, packing, and linting |
+| `create-motrix-plugin` | Project scaffolder for new plugins |
+
+The full SDK source and additional documentation live at [github.com/motrixapp/plugin-sdk](https://github.com/motrixapp/plugin-sdk).
+
+## Creating a Plugin
+
+<Steps>
+  <Step title="Scaffold a new plugin">
+    ```bash
+    pnpm create motrix-plugin my-plugin
+    # Pass 'post-action' for an afterComplete plugin:
+    pnpm create motrix-plugin my-plugin post-action
+    ```
+    The scaffolder creates a project with a `motrix-plugin.json` manifest, a TypeScript entry point, and a `package.json` pre-configured for watch builds.
+  </Step>
+  <Step title="Install dependencies">
+    ```bash
+    cd my-plugin && pnpm install
+    ```
+  </Step>
+  <Step title="Develop in watch mode">
+    ```bash
+    pnpm dev
+    ```
+    Watch-builds the plugin and launches Motrix with it loaded automatically via `MOTRIX_PLUGIN_DEV_PATH`.
+  </Step>
+  <Step title="Validate the manifest">
+    ```bash
+    pnpm exec motrix-plugin validate
+    ```
+    Validates `motrix-plugin.json` against the `@motrix/plugin-manifest-schema` Zod schema and reports any errors.
+  </Step>
+  <Step title="Pack for distribution">
+    ```bash
+    pnpm run pack
+    ```
+    Bundles your plugin into `dist/<id>-<version>.moext` — a signed archive ready for the Motrix plugin marketplace or manual installation.
+  </Step>
+  <Step title="Lint the packed bundle">
+    ```bash
+    pnpm exec motrix-plugin lint
+    ```
+    Inspects the `.moext` archive for policy violations such as non-ES2020 syntax, forbidden globals, or missing manifest fields.
+  </Step>
+</Steps>
+
+<Note>
+  The default scaffold starts with a `beforeCreate` URL resolver hook. Use the `post-action` template to start with an `afterComplete` notification plugin instead.
+</Note>
+
+## Plugin Manifest (`motrix-plugin.json`)
+
+Every plugin must include a `motrix-plugin.json` manifest at its root. The manifest is validated by `@motrix/plugin-manifest-schema` at install time and again by the `motrix-plugin validate` CLI command. The key fields, derived from the `PluginManifest` type in `src/shared/types/plugin.ts`, are:
+
+| Field | Description |
+|-------|-------------|
+| `manifestVersion` | Must be `1` |
+| `id` | Unique plugin identifier, used as the plugin's stable key |
+| `name` | Human-readable display name |
+| `version` | SemVer version string |
+| `description` | Short description shown in the marketplace |
+| `author` | Plugin author name or contact |
+| `engines.motrix` | SemVer range specifying compatible Motrix versions |
+| `main` | Entry point path (compiled to a single ES2020 module) |
+| `permissions` | Required capabilities; shown to the user before install |
+| `optionalPermissions` | User-grantable optional capabilities |
+| `hostPermissions` | URL patterns granting network access to specific origins |
+| `activationEvents` | Conditions that start the plugin VM (e.g., `onStartup`, `onDownload`) |
+| `contributes.hooks` | Lifecycle hooks the plugin handles |
+| `contributes.commands` | Callable commands exposed to other plugins or the UI |
+| `contributes.configuration` | JSON Schema describing plugin settings |
+
+A minimal manifest looks like this:
+
+```json
+{
+  "manifestVersion": 1,
+  "id": "com.example.my-plugin",
+  "name": "My Plugin",
+  "version": "1.0.0",
+  "description": "An example Motrix plugin.",
+  "author": "Your Name",
+  "engines": { "motrix": ">=2.0.0" },
+  "main": "dist/index.js",
+  "permissions": [],
+  "activationEvents": ["onDownload"],
+  "contributes": {
+    "hooks": {
+      "afterComplete": {}
+    }
+  }
+}
+```
+
+## Lifecycle Hooks
+
+Plugins declare which lifecycle hooks they handle in `contributes.hooks`. The four available hooks correspond to the context types defined in `src/shared/types/plugin-hooks.ts`:
+
+### `beforeCreate`
+
+Runs before a download task is created. Receives a `BeforeCreateHttpContextDTO` or `BeforeCreateBtContextDTO` depending on the download type. Your handler can modify the URL list, add or override request headers, change the save directory, or substitute a resolved direct URL for a page URL. This is the right hook for URL resolver plugins.
+
+```typescript
+import { hooks } from 'motrix:plugin-api'
+
+hooks.beforeCreate(async (ctx) => {
+  if (ctx.type === 'http') {
+    // Resolve an indirect URL to a direct download link
+    return { uris: [await resolveDirectUrl(ctx.sourceUrl)] }
+  }
+})
+```
+
+### `beforeFinalize`
+
+Runs before the downloaded file is moved to its final location. Receives `BeforeFinalizeContextDTO` with the completed `DownloadTask` and the current `filePath`. Use this hook to rename files, validate checksums, or trigger intermediate processing steps before the file settles into the save directory.
+
+### `afterComplete`
+
+Runs after a download finishes successfully. Receives `AfterCompleteContextDTO` with the completed `DownloadTask` and `filePath`. This is the best hook for post-download notifications, file tagging, moving files to a media library, or triggering external services. The `post-action` scaffold template starts with this hook.
+
+### `onError`
+
+Runs when a download fails. Receives `OnErrorContextDTO` with the failed `DownloadTask` and an `error` object containing a `code` and `message`. Use this hook to log failures, send alerts, or clean up partial downloads.
+
+## Accessing the Plugin API
+
+Plugins import runtime helpers from the `motrix:plugin-api` virtual module — a module provided by the Motrix runtime, not a package you install. It exposes the `hooks` registration API, structured logging, and the capability host interface for permissions-gated operations.
+
+```typescript
+import { hooks, logger, capabilities } from 'motrix:plugin-api'
+
+hooks.afterComplete(async (ctx) => {
+  logger.info({ taskId: ctx.task.id }, 'Download complete')
+  // Use a declared capability for notifications
+  await capabilities.notifications.show({
+    title: 'Download finished',
+    body: ctx.task.name,
+  })
+})
+```
+
+Access to each capability is gated by the permissions declared in `motrix-plugin.json`. Motrix presents those permission requests to the user before granting access. Optional permissions can be granted or revoked by the user at any time from Settings → Plugins.
+
+## Sandbox Constraints
+
+Motrix plugins run inside a [QuickJS](https://bellard.org/quickjs/) sandbox powered by `quickjs-emscripten`. The sandbox imposes strict constraints:
+
+<CardGroup cols={2}>
+  <Card title="No Node.js APIs" icon="ban">
+    `require`, `process`, `Buffer`, `fs`, and all other Node.js globals are unavailable. The runtime is ES2020 only.
+  </Card>
+  <Card title="No direct network access" icon="ban">
+    Plugins cannot open sockets or make HTTP requests directly. Network access is mediated through declared `hostPermissions` and the capability host.
+  </Card>
+  <Card title="No direct file system access" icon="ban">
+    File operations go through capability APIs that respect the user's granted permissions. Plugins cannot read or write arbitrary paths.
+  </Card>
+  <Card title="Encrypted secret storage" icon="lock">
+    Sensitive values such as API keys are stored in an encrypted lockbox via the capability host and are never exposed directly to the plugin VM.
+  </Card>
+</CardGroup>
+
+Plugins must be packaged as a **single ES2020 module**. The `motrix-plugin lint` command verifies this constraint before you publish. Use a bundler (Vite or esbuild, both are pre-configured in the scaffold) to produce a self-contained output file.
+
+<Tip>
+  Use `pnpm dev` to launch Motrix with your plugin loaded automatically. The `MOTRIX_PLUGIN_DEV_PATH` environment variable bypasses the normal installer and consent flow so you can iterate quickly without reinstalling the plugin on every change.
+</Tip>

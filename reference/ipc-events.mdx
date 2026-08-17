@@ -1,0 +1,199 @@
+---
+title: "IPC Events Reference: All Motrix Event Channels"
+sidebarTitle: "IPC Events"
+description: "Complete reference for all Motrix IPC event channels emitted by the app core to update the renderer about download tasks, engine state, plugins, and settings."
+---
+
+Motrix events are emitted by the app core and received by the renderer (and MDXP subscribers) to drive UI state updates. Events are push-only — the receiving side never replies. Channel strings are declared in `src/shared/protocol/events.ts` and are the canonical identifiers used on both the Electron IPC bus and the MDXP wire. Events that carry payloads over the MDXP event stream are listed in `ForwardableEvents`; internal-only events (such as `event:engineFailureOccurred`) are noted where applicable.
+
+<AccordionGroup>
+
+  <Accordion title="Task Events">
+    Emitted whenever a task's state, file list, or activity feed changes.
+    These are among the highest-frequency events in the system and are all
+    included in `ForwardableEvents`.
+
+    | Channel | Description |
+    |---------|-------------|
+    | `event:taskUpdated` | Task state has changed — status, progress percentage, download/upload speed, ETA, or peer count. Consumers should re-fetch or patch the task row. |
+    | `event:taskFilesUpdated` | The file list for a BitTorrent task has changed (e.g. files became available after metadata resolution). |
+    | `event:taskActivityUpdated` | The activity feed for a task has a new entry (log line, tracker response, piece event). |
+    | `event:taskInspectorActivityUpdated` | The task inspector's detailed activity panel has been updated. |
+  </Accordion>
+
+  <Accordion title="Engine Events">
+    Notifications about the lifecycle and health of the bundled aria2 engine.
+    Most engine events are included in `ForwardableEvents` so the web renderer
+    can react to engine state changes without a polling loop.
+
+    | Channel | Forwardable | Description |
+    |---------|-------------|-------------|
+    | `event:engineStateChanged` | ✅ | Overall engine state changed (`starting` / `running` / `stopped`). |
+    | `event:engineActiveChanged` | ✅ | Engine active status changed (has active tasks vs idle). |
+    | `event:engineDisconnected` | ✅ | The app lost its connection to the aria2 RPC interface. |
+    | `event:engineRecovered` | ✅ | The engine recovered after a disconnection or failure. |
+    | `event:engineReconnecting` | ✅ | The engine adapter is attempting to reconnect. |
+    | `event:engineRestartRequired` | ✅ | A settings change requires an engine restart before it takes effect. |
+    | `event:portConflict` | ✅ | The engine's configured port is in use; a port-switch confirmation is required. |
+    | `event:engineFailureOccurred` | ❌ | Internal main-process signal for an unrecoverable engine failure. **Not forwarded** over MDXP. |
+
+    <Note>
+      `event:engineFailureOccurred` is an internal producer signal inside the
+      main process. It is intentionally excluded from `ForwardableEvents` and
+      will not appear in the MDXP event stream or reach the renderer directly.
+    </Note>
+  </Accordion>
+
+  <Accordion title="Stats Events">
+    Global transfer statistics and speed-limit profile changes.
+
+    | Channel | Description |
+    |---------|-------------|
+    | `event:statsUpdated` | Global download and upload statistics have been updated (bytes transferred, active task count). |
+    | `event:speedLimitChanged` | The active speed-limit profile has changed (`base`, `alt`, or `auto` turtle mode). |
+  </Accordion>
+
+  <Accordion title="Plugin Events">
+    Notifications for every stage of the plugin lifecycle, plus opt-in streams
+    for per-plugin log entries and cross-plugin command invocations.
+
+    **Lifecycle**
+
+    | Channel | Description |
+    |---------|-------------|
+    | `event:pluginStatusChanged` | A plugin's enabled/disabled/error status has changed. |
+    | `event:pluginInstalled` | A plugin was installed successfully. |
+    | `event:pluginUninstalled` | A plugin was removed. |
+    | `event:pluginInstallConsentRequested` | User consent is required before a plugin install can proceed. |
+    | `event:pluginInstallProgress` | Progress update during a plugin install or update download. |
+    | `event:pluginError` | A plugin threw an error during execution. |
+    | `event:pluginTimeout` | A plugin hook or command exceeded its execution time budget. |
+    | `event:pluginEvicted` | A plugin was forcibly removed from its sandbox (e.g. after a capability violation). |
+    | `event:pluginActivationCapExceeded` | The plugin activation cap was exceeded; no further plugins can be activated until one is deactivated. |
+
+    **Configuration and permissions**
+
+    | Channel | Description |
+    |---------|-------------|
+    | `event:pluginConfigChanged` | A plugin's configuration was updated. |
+    | `event:pluginGrantsChanged` | A plugin's optional-permission grants changed. Payload: `{ pluginId: string }`. Renderer should refetch `GetPluginGrants`; the main process deactivates the plugin so the next activation picks up the new effective permissions. |
+    | `event:contributionIndexChanged` | The aggregated contribution index changed (plugin enable/disable/install/uninstall). Renderer should refetch `GetContributionIndex`. No payload — refetch is the contract. |
+
+    **Opt-in streams**
+
+    | Channel | Description |
+    |---------|-------------|
+    | `event:pluginLog` | Per-plugin log entry. Subscribe to the suffixed channel `event:pluginLog:<pluginId>` to receive log entries only for that plugin. |
+    | `event:pluginCommandInvoked` | Opt-in monitoring for cross-plugin command invocations. Payload mirrors the audit log: `{ caller, callee, commandId, durMs, ok }`. Useful for the Integrations tab live view. |
+
+    ```ts
+    // Subscribe to logs for a specific plugin
+    ipcRenderer.on(`event:pluginLog:${pluginId}`, (_, entry) => {
+      console.log(entry)
+    })
+    ```
+  </Accordion>
+
+  <Accordion title="Settings Events">
+    | Channel | Payload | Description |
+    |---------|---------|-------------|
+    | `event:settingsChanged` | Partial settings object | One or more settings fields were updated. |
+    | `event:localeChanged` | `{ language: SupportedLocale }` | The UI language was changed. Renderer should reload i18n resources for the new locale. |
+  </Accordion>
+
+  <Accordion title="Torrent Events">
+    Events specific to BitTorrent and magnet-link workflows.
+
+    | Channel | Description |
+    |---------|-------------|
+    | `event:magnetFileSelection` | Magnet metadata has been resolved and the task is ready for file selection. Payload: `{ taskId, meta, magnetUri, torrentBase64, saveDir }`. The `taskId` is the motrix ID of the persisted `magnet_metadata_resolution` task; pass it back via `existingTaskId` on `command:createTask` to swap the task in place. |
+    | `event:setAddTaskMode` | Switch the add-task dialog to a specific mode. Payload is `AddTaskUrlParams` (a superset of `{ mode: 'links' \| 'torrent' }`). |
+    | `event:torrentQueueSizeChanged` | The number of torrents waiting in the sequential torrent queue changed. |
+  </Accordion>
+
+  <Accordion title="NAT Events">
+    Notifications for UPnP / NAT-PMP port-mapping state.
+
+    | Channel | Description |
+    |---------|-------------|
+    | `event:natStateChanged` | The overall NAT mapping state changed (enabled/disabled/error). |
+    | `event:natMappingUpdated` | A specific port mapping was created, refreshed, or released. |
+    | `event:natDiagnosticCompleted` | A NAT diagnostic run finished; results are available via `GetNatDiagnostic`. |
+    | `event:natGatewayChanged` | The detected gateway address changed (e.g. network switch). |
+    | `event:natError` | A NAT operation encountered an error. |
+  </Accordion>
+
+  <Accordion title="Tracker Events">
+    | Channel | Description |
+    |---------|-------------|
+    | `event:trackerListUpdated` | The global tracker list was synced successfully from remote sources. |
+    | `event:trackerSyncFailed` | A tracker sync attempt failed. |
+  </Accordion>
+
+  <Accordion title="App Update Events">
+    Events for the Motrix desktop app auto-update flow, emitted by the update
+    service from check through download to install.
+
+    | Channel | Description |
+    |---------|-------------|
+    | `event:updateStateChanged` | The overall update state machine transitioned to a new state. |
+    | `event:updateCheckStarted` | An update check was initiated. |
+    | `event:updateAvailable` | A new Motrix version is available for download. |
+    | `event:updateNotAvailable` | The update check completed and no newer version was found. |
+    | `event:updateDownloadProgress` | Progress update while downloading a pending update. |
+    | `event:updateDownloaded` | The update has been fully downloaded and is ready to install. |
+    | `event:updateCancelled` | The update download was cancelled. |
+    | `event:updateError` | An error occurred during the update check or download. |
+  </Accordion>
+
+  <Accordion title="GeoIP Events">
+    | Channel | Description |
+    |---------|-------------|
+    | `event:geoipUpdateProgress` | Progress update while downloading a GeoIP database update. |
+    | `event:geoipStatusChanged` | The GeoIP database status changed (up to date, updating, failed, etc.). |
+  </Accordion>
+
+  <Accordion title="Notification Events">
+    | Channel | Payload | Description |
+    |---------|---------|-------------|
+    | `event:notificationAdded` | `AppNotification` | A new in-app notification was created. |
+    | `event:notificationsChanged` | — | The notification list changed (read status, deletion, clear). No payload — consumers should refetch the unread count and panel list via `GetUnreadNotificationCount` and `ListNotifications`. |
+  </Accordion>
+
+  <Accordion title="UI Events">
+    Events that drive renderer-side navigation, toasts, and system integration.
+
+    | Channel | Description |
+    |---------|-------------|
+    | `event:navigateTo` | Navigate the renderer to a specific route (e.g. after opening Motrix from a magnet link). |
+    | `event:toastShow` | Show a toast notification in the renderer. Payload carries the message text, variant, and optional action. |
+    | `event:protocolUrl` | A `motrix://` or `magnet:` URI was received via OS protocol handler. |
+    | `event:protocolTorrentFile` | A `.torrent` file was opened via file association. Payload: `{ payload: { name, dataBase64 }, meta: TorrentMeta }`. |
+    | `event:tuningUpdated` | Engine tuning parameters (connection limits, timeouts) were updated. |
+    | `event:appCrash` | An unrecoverable application crash was detected. |
+    | `event:appError` | A non-fatal application error occurred. |
+    | `event:applicationMenuChanged` | The application menu structure changed (e.g. after a contribution index update). Renderer should refetch via `GetApplicationMenu`. |
+  </Accordion>
+
+</AccordionGroup>
+
+## Forwardable Events
+
+Events in `ForwardableEvents` (defined in `src/shared/protocol/forwardable-events.ts`) are the subset forwarded over the MDXP event stream to WebSocket and SSE subscribers. All task, engine, NAT, tracker, update, plugin, settings, and bridge lifecycle events are forwardable. The following events are **not** forwarded and remain internal to the main process:
+
+- `event:engineFailureOccurred` — internal producer signal
+- `event:navigateTo` — renderer navigation only
+- `event:toastShow` — renderer toast only
+- `event:protocolUrl` — protocol handler dispatch only
+- `event:protocolTorrentFile` — file-association dispatch only
+- `event:setAddTaskMode` — add-task dialog state only
+- `event:appCrash` / `event:appError` — internal crash handling
+- `event:applicationMenuChanged` — menu structure update only
+- `event:tuningUpdated` — engine tuning only
+
+<Tip>
+  All channel strings are defined in `src/shared/protocol/events.ts` and typed
+  as the `EventChannel` union. When registering listeners from TypeScript,
+  prefer the `Events` enum (e.g. `Events.TaskUpdated`) over raw string literals
+  to get compile-time safety and IDE autocomplete.
+</Tip>

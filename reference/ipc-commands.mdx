@@ -1,0 +1,277 @@
+---
+title: "IPC Commands Reference: All Motrix Command Channels"
+sidebarTitle: "IPC Commands"
+description: "Complete reference for all Motrix IPC command channels used by the renderer and MDXP clients to control downloads, settings, plugins, and the engine."
+---
+
+Motrix uses a typed command/event/query system for IPC. Commands are one-way instructions dispatched from the renderer (or an MDXP client) to the app core. The core executes the instruction and may subsequently emit one or more events to report the outcome. Channel strings are declared in `src/shared/protocol/commands.ts` and are the canonical identifiers used on both the Electron IPC bus and the MDXP wire. Below is the complete list, organized by domain.
+
+<AccordionGroup>
+
+  <Accordion title="Download Tasks">
+    Core commands for creating and controlling individual download tasks. These
+    channels are available over both renderer IPC and MDXP.
+
+    | Channel | Description |
+    |---------|-------------|
+    | `command:createDownload` | Create a new HTTP/FTP download from one or more URLs |
+    | `command:pauseTask` | Pause a single active task |
+    | `command:resumeTask` | Resume a previously paused task |
+    | `command:removeTask` | Remove a task; optionally delete downloaded files |
+    | `command:reAddTask` | Re-add a previously removed task to the queue |
+    | `command:stopSeedingTask` | Stop seeding a completed BitTorrent task |
+    | `command:createTask` | Engine-neutral task creation (accepts a `TaskCreateRequest` — HTTP or BT discriminated union) |
+
+    **`command:removeTask` payload** (`RemoveTaskPayload`):
+
+    ```ts
+    {
+      taskId: string         // ID of the task to remove
+      deleteWithFiles: boolean  // true = also delete downloaded files from disk
+    }
+    ```
+
+    **`command:createTask` payload** (`TaskCreateRequest`):
+
+    ```ts
+    // HTTP download
+    {
+      type: 'http'
+      uris: string[]         // One or more URLs (at least one required)
+      saveDir: string        // Destination directory
+      filename?: string      // Override the inferred filename
+      connections?: number   // Parallel connections (1–128)
+      headers?: { name: string; value: string }[]
+      proxy?: string
+    }
+
+    // BitTorrent download
+    {
+      type: 'bt'
+      payload:
+        | { kind: 'torrent-base64'; base64: string }
+        | { kind: 'magnet'; uri: string }  // must start with 'magnet:?'
+      selectedFiles: number[]  // File indices to download (required for torrent-base64)
+      saveDir: string
+      dlLimit?: number       // Download speed limit in bytes/sec (0 = unlimited)
+      ulLimit?: number       // Upload speed limit in bytes/sec (0 = unlimited)
+      seedRatio?: number     // Stop seeding after reaching this ratio
+      displayName?: string   // Optional display name hint
+      existingTaskId?: string // Swap an existing magnet_metadata_resolution task in place
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="Bulk Task Operations">
+    These commands operate on multiple tasks at once and are optimized for
+    multi-select actions in the renderer. They coalesce what would otherwise be
+    many individual IPC round-trips into a single dispatch.
+
+    <Warning>
+      Bulk task commands are **renderer-IPC only** and are deliberately **not**
+      exposed as MDXP methods. External integrations (CLI, browser extensions)
+      use the singular `command:pauseTask` / `command:resumeTask` /
+      `command:removeTask` channels instead.
+    </Warning>
+
+    | Channel | Payload | Description |
+    |---------|---------|-------------|
+    | `command:pauseTasks` | `string[]` — task IDs | Pause multiple selected tasks |
+    | `command:resumeTasks` | `string[]` — task IDs | Resume multiple paused tasks |
+    | `command:removeTasks` | `{ taskIds: string[]; deleteWithFiles: boolean }` | Remove multiple tasks; optionally delete files |
+    | `command:reAddTasks` | `string[]` — task IDs | Re-add multiple removed tasks |
+    | `command:stopSeedingTasks` | `string[]` — task IDs | Stop seeding multiple completed torrent tasks |
+  </Accordion>
+
+  <Accordion title="Torrent">
+    Commands for the full BitTorrent and magnet-link workflow, from parsing
+    through file selection to download.
+
+    | Channel | Description |
+    |---------|-------------|
+    | `command:parseTorrent` | Parse a `.torrent` file and return its metadata (file list, info hash, total size) |
+    | `command:addTorrentTask` | Add a torrent download task from a parsed `.torrent` file |
+    | `command:addMagnetTask` | Add a download task from a magnet URI |
+    | `command:reopenMagnetFileSelection` | Reopen the file-selection dialog for a magnet that has already resolved its metadata (`status=metadata_ready`) but whose dialog was dismissed |
+    | `command:handleDroppedTorrent` | Handle a drag-and-dropped `.torrent` file received by the window |
+    | `command:setSelectedFiles` | Update the set of file indices selected for download within an active torrent task |
+    | `command:nextTorrent` | Advance to the next queued torrent |
+    | `command:downloadAllTorrents` | Start all queued torrent tasks at once |
+  </Accordion>
+
+  <Accordion title="Settings">
+    | Channel | Description |
+    |---------|-------------|
+    | `command:updateSettings` | Update one or more app, engine, proxy, tracker, or speed-limit settings. The payload is a partial settings object; unrecognized keys are rejected. |
+
+    **Speed-limit profile shape** (part of settings):
+
+    ```ts
+    {
+      base: { download: number; upload: number }  // bytes/sec; 0 = unlimited
+      alt:  { download: number; upload: number }  // "turtle mode" profile
+      turtle: 'off' | 'on' | 'auto'
+      auto: {
+        schedule: {
+          enabled: boolean
+          from: string   // "HH:MM"
+          to:   string   // "HH:MM"
+          days: number[] // 0–6, Sunday = 0
+        }
+        videoApp: {
+          enabled: boolean
+          processNames: string[]
+        }
+        adaptive: {
+          enabled: boolean
+          linkDown: number
+          linkUp: number
+          headroomPercent: number  // 1–100
+        }
+      }
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="Plugins">
+    Commands covering the full plugin lifecycle: installation, configuration,
+    permissions, logging, and updates. Built-in plugin hot-updates use a
+    separate signed channel that bypasses the normal plugin-installer path.
+
+    **Lifecycle**
+
+    | Channel | Description |
+    |---------|-------------|
+    | `command:installPlugin` | Begin installation of a community plugin by ID or registry entry |
+    | `command:confirmPluginInstall` | Confirm a pending plugin install after the user grants consent |
+    | `command:cancelPluginInstall` | Cancel a pending plugin install |
+    | `command:uninstallPlugin` | Uninstall a plugin and remove its data |
+    | `command:enablePlugin` | Enable a previously disabled plugin |
+    | `command:disablePlugin` | Disable a plugin without uninstalling it |
+    | `command:updatePluginOrder` | Reorder plugins in the hook chain |
+
+    **Configuration and permissions**
+
+    | Channel | Description |
+    |---------|-------------|
+    | `command:updatePluginConfig` | Update plugin-specific configuration key(s) |
+    | `command:updatePluginGrants` | Update optional permission grants for a plugin. Payload is a partial `GrantsMap`; unknown or required-permission keys are rejected with `plugin.grants.unknown_permission`. |
+
+    **Logging and diagnostics**
+
+    | Channel | Description |
+    |---------|-------------|
+    | `command:clearPluginLogs` | Clear the log history for a plugin |
+    | `command:setPluginLogVerbose` | Toggle verbose logging for a plugin |
+    | `command:checkPluginUpdates` | Check configured remotes for newer versions of all installed plugins; returns a list of `{ pluginId, currentVersion, latestVersion }` |
+
+    **Built-in plugin hot-updates**
+
+    These channels handle signed overlay installs for built-in plugins and are
+    never routed through the standard plugin-installer.
+
+    | Channel | Description |
+    |---------|-------------|
+    | `command:installBuiltinUpdate` | Begin a signed built-in plugin update |
+    | `command:confirmBuiltinUpdate` | Confirm the pending built-in update |
+    | `command:cancelBuiltinUpdate` | Cancel the pending built-in update |
+    | `command:revertBuiltinToBundled` | Revert a built-in plugin to its bundled (factory) version |
+  </Accordion>
+
+  <Accordion title="Engine">
+    Commands for managing the bundled aria2 download engine.
+
+    | Channel | Description |
+    |---------|-------------|
+    | `command:restartEngine` | Restart the aria2 engine (e.g. after a settings change that requires a restart) |
+    | `command:recoverEngine` | Attempt to recover from an engine failure state |
+    | `command:confirmPortSwitch` | Confirm a port conflict resolution — accept the proposed alternate port |
+  </Accordion>
+
+  <Accordion title="NAT">
+    Commands for UPnP / NAT-PMP port mapping and diagnostics.
+
+    | Channel | Description |
+    |---------|-------------|
+    | `command:enableNat` | Enable UPnP/NAT-PMP port mapping |
+    | `command:disableNat` | Disable port mapping |
+    | `command:runNatDiagnostic` | Run NAT connectivity diagnostics |
+    | `command:forceRemapNat` | Force a re-mapping of NAT ports (useful after gateway changes) |
+    | `command:exportNatBundle` | Export a NAT diagnostic bundle for support |
+  </Accordion>
+
+  <Accordion title="Trackers">
+    Commands for managing BitTorrent tracker lists at the global and per-task
+    level.
+
+    | Channel | Description |
+    |---------|-------------|
+    | `command:syncTrackers` | Sync the global tracker list from all configured remote sources |
+    | `command:syncTaskBtTracker` | Sync trackers for a specific task from the global list |
+    | `command:setTaskBtTracker` | Manually set the tracker list for a specific task |
+  </Accordion>
+
+  <Accordion title="Notifications">
+    Commands for managing the in-app notification center.
+
+    | Channel | Payload | Description |
+    |---------|---------|-------------|
+    | `command:markNotificationRead` | `id: string` | Mark a single notification as read |
+    | `command:markAllNotificationsRead` | — | Mark all notifications as read |
+    | `command:deleteNotification` | `id: string` | Delete a single notification permanently |
+    | `command:clearNotifications` | — | Clear all notifications |
+  </Accordion>
+
+  <Accordion title="App Updates">
+    Commands for the Motrix desktop app auto-update flow.
+
+    | Channel | Description |
+    |---------|-------------|
+    | `command:checkForUpdates` | Trigger an update check against the configured release feed |
+    | `command:downloadUpdate` | Begin downloading a pending update that was found |
+    | `command:installUpdate` | Install a fully downloaded update and restart the app |
+  </Accordion>
+
+  <Accordion title="Window & UI">
+    Commands for window management, dialogs, and system integration.
+
+    | Channel | Description |
+    |---------|-------------|
+    | `command:showMainWindow` | Bring the main window to the front |
+    | `command:showAddTaskWindow` | Open the add-task dialog window |
+    | `command:closeCurrentWindow` | Close the currently focused window |
+    | `command:minimizeCurrentWindow` | Minimize the currently focused window |
+    | `command:pickSaveDir` | Open a native directory-picker dialog |
+    | `command:resizeWindow` | Resize the application window |
+    | `command:openExternal` | Open a URL in the system's default browser |
+    | `command:requestDefaultTorrentHandler` | Request that Motrix becomes the system's default handler for `.torrent` files |
+    | `command:revealInFolder` | Reveal a downloaded file in the system file manager (Finder / Explorer) |
+    | `command:updateMenuContext` | Update context passed to the application menu (e.g. current task selection) |
+    | `command:executeApplicationMenuItem` | Programmatically execute an application menu item by ID |
+  </Accordion>
+
+  <Accordion title="GeoIP">
+    | Channel | Description |
+    |---------|-------------|
+    | `command:updateGeoIPDatabase` | Trigger a GeoIP database update from the configured remote source |
+  </Accordion>
+
+  <Accordion title="Integration">
+    Commands for CLI tool installation and the onboarding disclaimer flow.
+
+    | Channel | Description |
+    |---------|-------------|
+    | `command:installCliTool` | Install the `@motrix/cli` tool from Settings → Integration |
+    | `command:acceptDisclaimer` | Accept the onboarding disclaimer (required before first use) |
+    | `command:declineDisclaimer` | Decline the onboarding disclaimer |
+    | `command:setDisclaimerLanguage` | Set the language shown in the onboarding disclaimer |
+  </Accordion>
+
+</AccordionGroup>
+
+<Note>
+  All channel strings are defined in `src/shared/protocol/commands.ts` and
+  typed as the `CommandChannel` union. When invoking commands from TypeScript,
+  prefer the `Commands` enum (e.g. `Commands.CreateDownload`) over raw string
+  literals to benefit from compile-time checks.
+</Note>

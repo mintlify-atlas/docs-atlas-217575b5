@@ -1,0 +1,134 @@
+---
+title: "Proxy Settings Reference: HTTP, HTTPS, and SOCKS5 Proxies"
+sidebarTitle: "Proxy Settings"
+description: "Configure HTTP, HTTPS, or SOCKS5 proxy settings in Motrix. Control which traffic (downloads, updates, trackers) routes through the proxy."
+---
+
+Motrix supports HTTP, HTTPS, and SOCKS5 proxies for three distinct traffic types: download connections handled by aria2, app update checks, and tracker list synchronisation. Because each scope can be toggled independently, you can route only downloads through a proxy while keeping update checks on a direct connection — or any other combination that fits your network setup.
+
+Proxy settings live in the `proxy` namespace of the Motrix settings store and are validated through `proxySettingsSchema` (Zod).
+
+<Info>
+  The proxy is applied at the engine/application layer. It does **not** install a system-wide proxy — other apps on your machine are unaffected.
+</Info>
+
+---
+
+## Connection
+
+<ParamField path="enabled" type="boolean" default="false">
+  Master switch for the proxy. When `false`, all traffic uses direct connections regardless of the other settings. No restart is required — Motrix reads this value before initiating each connection.
+</ParamField>
+
+<ParamField path="protocol" type='"http" | "https" | "socks5"' default='"http"'>
+  Proxy protocol to use when connecting to `host:port`.
+
+  | Value | Description |
+  |-------|-------------|
+  | `http` | Plain HTTP CONNECT proxy |
+  | `https` | HTTP proxy over a TLS connection to the proxy server |
+  | `socks5` | SOCKS5 proxy (supports TCP and, where the proxy allows it, UDP) |
+</ParamField>
+
+<ParamField path="host" type="string (max 253 chars)" default='""'>
+  Hostname or IP address of the proxy server. Accepts both IPv4 addresses (`192.168.1.1`) and hostnames (`proxy.example.com`). IPv6 addresses should be wrapped in square brackets (`[::1]`).
+</ParamField>
+
+<ParamField path="port" type="integer" default="8080">
+  Port number of the proxy server. Range: **1–65535**.
+</ParamField>
+
+---
+
+## Authentication
+
+<ParamField path="user" type="string (max 256 chars)" default='""'>
+  Username for proxy authentication. Leave empty if the proxy does not require credentials.
+</ParamField>
+
+<ParamField path="password" type="string (max 256 chars)" default='""'>
+  Password for proxy authentication. Stored in the Motrix settings store alongside other settings — consider using a dedicated proxy password rather than a reused credential.
+</ParamField>
+
+---
+
+## Bypass
+
+<ParamField path="bypass" type="string[]" default="[]">
+  A list of up to **64** hostnames, IP addresses, or CIDR ranges that should bypass the proxy and connect directly. Each entry is a plain string (max 253 chars per item).
+
+  ```json
+  ["localhost", "127.0.0.1", "::1", "10.0.0.0/8", "*.internal.example.com"]
+  ```
+
+  <Tip>
+    Always include `localhost` and `127.0.0.1` in the bypass list if your proxy is running locally — otherwise Motrix's own internal RPC traffic may attempt to route through the proxy.
+  </Tip>
+</ParamField>
+
+---
+
+## Scopes
+
+Scopes let you selectively route only certain types of Motrix traffic through the proxy. All scopes default to `false` even when the proxy is `enabled`, so you must explicitly opt each scope in.
+
+<ParamField path="scopes.download" type="boolean" default="false">
+  Route aria2 download connections through the proxy. When `true`, all HTTP, FTP, and BitTorrent tracker/peer traffic managed by the engine is sent via the configured proxy.
+</ParamField>
+
+<ParamField path="scopes.updateApp" type="boolean" default="false">
+  Route Motrix's own app-update checks through the proxy. Useful in environments where the update server is only reachable via a proxy.
+</ParamField>
+
+<ParamField path="scopes.updateTrackers" type="boolean" default="false">
+  Route BitTorrent tracker list synchronisation requests through the proxy. Enable this if your network blocks the GitHub/CDN URLs used to fetch tracker lists.
+</ParamField>
+
+---
+
+## Example Configuration
+
+The example below configures a local SOCKS5 proxy (e.g. an SSH tunnel or a VPN split-tunnel) that handles download traffic and tracker syncs, but leaves app-update checks on a direct connection:
+
+```json
+{
+  "enabled": true,
+  "protocol": "socks5",
+  "host": "127.0.0.1",
+  "port": 1080,
+  "user": "",
+  "password": "",
+  "bypass": ["localhost", "127.0.0.1"],
+  "scopes": {
+    "download": true,
+    "updateApp": false,
+    "updateTrackers": true
+  }
+}
+```
+
+---
+
+## Changing Proxy Settings via IPC
+
+```ts
+import { ipcRenderer } from 'electron'
+
+ipcRenderer.invoke('command:updateSettings', {
+  proxy: {
+    enabled: true,
+    protocol: 'socks5',
+    host: '127.0.0.1',
+    port: 1080,
+    scopes: {
+      download: true,
+      updateApp: false,
+      updateTrackers: true,
+    },
+  },
+})
+```
+
+<Note>
+  Changes to proxy settings apply to new connections immediately. Ongoing download tasks continue using the connection mode they started with until they complete, pause, or retry.
+</Note>

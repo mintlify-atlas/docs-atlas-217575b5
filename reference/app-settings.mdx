@@ -1,0 +1,143 @@
+---
+title: "App Settings Reference: Appearance, Behavior, and Updates"
+sidebarTitle: "App Settings"
+description: "Complete reference for Motrix app settings including theme, language, notifications, startup behavior, browser bridge, and update channel configuration."
+---
+
+App settings govern how Motrix looks, behaves, and integrates with the rest of your operating system. Every field is validated with [Zod](https://zod.dev) through `appSettingsSchema` and persisted across restarts in the Motrix settings store. You can change any setting through the **Settings** panel in the UI, or programmatically via the `command:updateSettings` IPC message from the renderer.
+
+<Info>
+  Settings are seeded with their defaults on first launch. Some fields (like `defaultSaveDir`) are initially empty strings that the main process replaces with a real path before the UI mounts — the renderer never observes the raw sentinel value.
+</Info>
+
+---
+
+## Appearance
+
+<ParamField path="theme" type='"system" | "light" | "dark"' default='"system"'>
+  Color theme for the Motrix UI. `system` follows the OS preference and updates automatically when the system theme changes.
+</ParamField>
+
+<ParamField path="language" type='"en-US" | "zh-CN" | "zh-TW"' default='"en-US"'>
+  UI display language. Motrix ships with three locales:
+
+  | Code | Language |
+  |------|----------|
+  | `en-US` | English |
+  | `zh-CN` | Simplified Chinese (简体中文) |
+  | `zh-TW` | Traditional Chinese (繁體中文) |
+
+  Changes take effect on the next app launch.
+</ParamField>
+
+<ParamField path="liquidGlassEffect" type="boolean" default="false">
+  Enable the macOS Liquid Glass visual effect on supported windows. Has no effect on Windows or Linux. Requires an app restart to fully apply.
+</ParamField>
+
+---
+
+## Startup & Run Mode
+
+<ParamField path="launchAtStartup" type="boolean" default="false">
+  Register Motrix as a login item so it launches automatically when the user logs in. Motrix writes the OS login-item entry when this is toggled; no restart is required.
+</ParamField>
+
+<ParamField path="runMode" type="1 | 2 | 3" default="1 (Standard)">
+  Controls how Motrix presents itself after launch. Maps to the `RunMode` enum:
+
+  | Value | Name | Behavior |
+  |-------|------|----------|
+  | `1` | `Standard` | Normal window + system tray icon |
+  | `2` | `TrayOnly` | Start minimized to tray with no main window shown |
+  | `3` | `HideTray` | Show window only; no tray icon |
+</ParamField>
+
+<ParamField path="warnBeforeQuit" type="boolean" default="true">
+  When `true`, quitting Motrix while one or more downloads are active shows a confirmation dialog. The value is read live at quit time — no restart is needed when you change it.
+</ParamField>
+
+---
+
+## Notifications
+
+<ParamField path="notifyOnComplete" type="boolean" default="true">
+  Send an OS-level system notification when a download finishes successfully.
+</ParamField>
+
+<ParamField path="notifyOnError" type="boolean" default="true">
+  Send an OS-level system notification when a download fails or encounters an error.
+</ParamField>
+
+---
+
+## Tray
+
+<ParamField path="traySpeedometer" type="boolean" default="false">
+  Display a live combined download/upload speed readout inside the system tray icon. Useful for monitoring activity at a glance without opening the main window.
+</ParamField>
+
+---
+
+## Downloads
+
+<ParamField path="defaultSaveDir" type="string" default='"~/Downloads" (seeded on first launch)'>
+  Default directory where completed downloads are saved. The schema stores an empty string as a sentinel; the main process replaces it with the absolute path to `~/Downloads` the first time settings are loaded. You can set any absolute path here.
+</ParamField>
+
+<ParamField path="magnetFileSelection" type="boolean" default="true">
+  When `true`, opening a `magnet:` link shows a file-selection dialog so you can pick which files inside the torrent to download before the task starts.
+</ParamField>
+
+<ParamField path="protocols.magnet" type="boolean" default="true">
+  Register Motrix as the default system handler for `magnet://` URIs. When enabled, clicking a magnet link in a browser or file manager opens Motrix automatically.
+</ParamField>
+
+---
+
+## Browser Bridge
+
+<ParamField path="browserBridgeEnabled" type="boolean" default="true">
+  Master switch for the WebSocket bridge that allows compatible browser extensions to hand downloads directly to Motrix. Disable this if you do not use the browser extension or want to prevent any local WebSocket listener.
+
+  <Warning>
+    Changing this setting requires an app restart to take effect.
+  </Warning>
+</ParamField>
+
+---
+
+## Updates
+
+<ParamField path="checkForUpdatesOnLaunch" type="boolean" default="true">
+  Automatically check for a new Motrix release each time the packaged app starts. When an update is found it is displayed to the user; **downloading and installing always require explicit user action**.
+</ParamField>
+
+<ParamField path="updateChannel" type='"stable" | "beta"' default='"stable"'>
+  The release channel used for automatic update checks.
+
+  | Value | Behaviour |
+  |-------|-----------|
+  | `stable` | Only offers final stable releases; never installs pre-release builds |
+  | `beta` | Accepts beta releases as well as subsequent stable versions |
+</ParamField>
+
+---
+
+## Changing Settings Programmatically
+
+To update settings from the renderer, dispatch the `command:updateSettings` IPC message with a partial settings object:
+
+```ts
+import { ipcRenderer } from 'electron'
+
+ipcRenderer.invoke('command:updateSettings', {
+  app: {
+    theme: 'dark',
+    notifyOnComplete: false,
+  },
+})
+```
+
+<Tip>
+  You only need to pass the keys you want to change. Motrix deep-merges the partial object with the current settings and re-validates the result through the Zod schema before persisting.
+</Tip>

@@ -1,0 +1,115 @@
+---
+title: "Motrix Server Security: TLS, Auth, and Network Hardening"
+sidebarTitle: "Security"
+description: "Secure your Motrix Server deployment with TLS termination, operator token authentication, firewall rules, and container hardening best practices."
+---
+
+Motrix Server is built with a defence-in-depth approach: the container runs as a non-root user, the root filesystem is read-only, and every control-plane action requires an operator token. Those defaults protect well-configured LAN deployments out of the box. Internet-facing or untrusted-LAN deployments require additional layers — TLS termination, firewall rules, and careful bind-address choices — that the operator must configure explicitly.
+
+## Authentication
+
+On first start, Motrix generates a random credential and writes it to `/data/operator-token` with mode `0600`. This file is the authoritative source for the operator token and persists across restarts and container replacements.
+
+Send the token as a bearer credential on every authenticated request:
+
+```http
+Authorization: Bearer <token>
+```
+
+For example, from the shell:
+
+```bash
+TOKEN="$(cat motrix-data/operator-token)"
+curl --fail \
+  --header "Authorization: Bearer ${TOKEN}" \
+  http://127.0.0.1:8080/api/diagnostics
+```
+
+You may alternatively set `MOTRIX_OPERATOR_TOKEN` as an environment variable. This is less secure because environment variables are visible in container metadata (for example, `docker inspect`). The generated file is the safer default for single-host deployments. Do not reuse a token copied from another deployment — each instance should have its own credential.
+
+## TLS and Reverse Proxy
+
+Plain HTTP over a trusted LAN is acceptable. For internet access or any untrusted network segment, TLS termination at a reverse proxy and firewall rules blocking direct access to the origin ports are both required.
+
+**Reverse proxy on the Docker host** — use the included `compose.reverse-proxy.env` to bind both origin ports to host loopback, then configure the host proxy with separate upstreams:
+
+```bash
+export MOTRIX_PUBLIC_URL='https://motrix.example.com'
+docker compose --env-file compose.reverse-proxy.env -f compose.yaml up -d --wait
+```
+
+Configure the proxy with:
+- `127.0.0.1:8080` as the Web UI/API upstream — preserve cookies, `Authorization` headers, and streaming responses
+- `127.0.0.1:16801` as the MDXP HTTP/SSE upstream — preserve streaming responses and long-lived connections
+
+**Reverse proxy in another container** — omit the `ports` entries from the Motrix service entirely, place both containers on a shared user-defined network, and route the proxy to `server:8080` and `server:16801` over that private network. Publish only the proxy's TLS entry point. Keep `MOTRIX_MDXP_HOST=0.0.0.0` so the proxy container can reach the MDXP listener.
+
+<Warning>
+  Do not expose port 8080 or port 16801 directly to the internet without TLS. Forwarding only port 8080 does not publish MDXP, and forwarding only port 16801 does not serve the approval UI — both services need their own TLS-enabled upstream when remote access is required.
+</Warning>
+
+## Device-Code Pairing
+
+Remote CLI and agent clients connect through a device-code flow that requires explicit operator approval for every new client. No pre-shared secret or password is transmitted.
+
+1. The client runs `motrix pair --name <label>` and displays a short alphanumeric code.
+2. The operator approves the code in the Web UI under **Settings → Connected Clients**, or via `motrix-admin` over SSH (see below).
+3. The client receives a long-lived token and stores it locally. Future connections use that token automatically.
+
+If the Web UI is unreachable, an SSH operator can manage pending requests from inside the running container:
+
+```bash
+# List pending requests
+docker compose exec server motrix-admin pairing pending
+
+# Approve by device code
+docker compose exec server motrix-admin pairing approve ABCD-EFGH
+
+# Deny a request
+docker compose exec server motrix-admin pairing deny ABCD-EFGH
+```
+
+Paired client tokens are stored in `/data` and survive container replacement. Revoke a client at any time from the Web UI or `motrix-admin`. First-time browser extension pairing uses the desktop app's native-messaging channel and is not offered by the headless server.
+
+## Container Hardening
+
+The `compose.yaml` includes several hardening options that should be preserved in any derivative deployment:
+
+```yaml
+services:
+  server:
+    read_only: true               # Read-only root filesystem
+    security_opt:
+      - no-new-privileges:true    # Prevent privilege escalation via setuid binaries
+    user: "${MOTRIX_UID:-1000}:${MOTRIX_GID:-1000}"  # Non-root user
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=64m,mode=1777      # Writable /tmp without exec
+    init: true                    # Reaps zombie processes, forwards signals cleanly
+```
+
+These settings together mean that:
+
+- The container cannot write to its own image layers.
+- A compromised process cannot gain new capabilities.
+- The runtime user has no special host privileges even if it shares a UID with a host account.
+- `/tmp` is an in-memory filesystem that does not persist across container restarts.
+
+Do not add `privileged: true`, mount the Docker socket, or grant the container access to the whole NAS filesystem. If you encounter a startup error about read-only paths or `EACCES`, the fix is to correct mount ownership — not to relax container security.
+
+## Plugin Security
+
+Plugins run inside QuickJS sandboxes. They cannot access Node.js APIs, the host filesystem, or the network directly. All external access is mediated by the plugin runtime:
+
+- **Declared permissions** — each plugin lists the capabilities and URL-scoped host permissions it needs in its `motrix-plugin.json` manifest. Motrix shows those requests to the user before granting access.
+- **Isolated execution** — plugin code runs as a single ES2020 module in a QuickJS context without `require`, `import`, or `process`.
+- **Encrypted secrets** — secrets accessible to plugins are stored in an encrypted lockbox. The lockbox key is derived from `MOTRIX_SECRETS_SEED` if set, or generated and persisted to `/data/secrets.lockbox`. Supply `MOTRIX_SECRETS_SEED` from an orchestrator secret store to tie the lockbox to an externally managed key.
+- **Provenance tracking** — each installed plugin records its source, signature, and granted permissions. `MOTRIX_ALLOW_UNMANAGED_PLUGINS=true` bypasses provenance checks and should not be set in normal deployments.
+
+## Troubleshooting
+
+| Symptom | Fix |
+|---------|-----|
+| Web UI opens but unlock fails | Read the current `/data/operator-token`; do not use a token copied from another deployment. Verify the file is regular, base64url text, and mode `0600`. |
+| `EACCES` or read-only error at startup | Compare `docker inspect ... .Config.User` with the numeric ownership of both mounts. Correct ownership with `chown`; do not run privileged or as root. |
+| Port already allocated | Change `MOTRIX_HTTP_PORT` or `MOTRIX_MDXP_PUBLIC_PORT` in the environment, and update `MOTRIX_PUBLIC_URL` if the Web port changes. |
+| `manifest unknown` on pull | Confirm the registry and tag spelling, and that an image-bearing release exists. Try the same immutable tag on the other registry (Docker Hub or GHCR). |

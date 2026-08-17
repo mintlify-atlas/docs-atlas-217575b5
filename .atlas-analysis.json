@@ -1,0 +1,119 @@
+{
+  "projectType": "saas",
+  "projectName": "Motrix",
+  "projectDescription": "A modern, full-featured cross-platform desktop download manager supporting HTTP, FTP, BitTorrent, and magnet links, with a headless Docker server mode, browser extensions, plugin system, and CLI client.",
+  "theme": "almond",
+  "primaryColor": "#222222",
+  "lightColor": "#74747c",
+  "darkColor": "#e2e9ea",
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Getting Started",
+            "pages": [
+              "introduction",
+              "installation",
+              "quickstart"
+            ]
+          },
+          {
+            "group": "Core Features",
+            "pages": [
+              "features/downloads",
+              "features/bittorrent",
+              "features/speed-limits",
+              "features/settings"
+            ]
+          },
+          {
+            "group": "Integrations",
+            "pages": [
+              "integrations/cli",
+              "integrations/browser-extension",
+              "integrations/plugins"
+            ]
+          },
+          {
+            "group": "Server & Docker",
+            "pages": [
+              "server/overview",
+              "server/docker-deployment",
+              "server/environment-reference",
+              "server/security"
+            ]
+          },
+          {
+            "group": "Development",
+            "pages": [
+              "development/contributing",
+              "development/architecture",
+              "development/plugin-sdk"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "Reference",
+        "groups": [
+          {
+            "group": "Configuration",
+            "pages": [
+              "reference/app-settings",
+              "reference/engine-settings",
+              "reference/proxy-settings",
+              "reference/tracker-settings",
+              "reference/speed-limit-settings"
+            ]
+          },
+          {
+            "group": "Protocol & API",
+            "pages": [
+              "reference/mdxp-protocol",
+              "reference/ipc-commands",
+              "reference/ipc-events"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "HTTP, FTP, BitTorrent, and magnet link downloads powered by a bundled aria2 engine",
+    "Per-file selection for BitTorrent downloads with magnet link metadata resolution",
+    "Built-in tracker list management with automatic updates and health checks",
+    "QuickJS-based plugin sandbox with fine-grained permissions and in-app marketplace",
+    "UPnP and NAT-PMP port mapping for improved peer connectivity",
+    "Multiple speed-limit profiles with scheduling, adaptive, and video-app detection modes",
+    "SQLite-backed download sessions that survive restarts",
+    "Browser extensions for Chrome and Firefox (Manifest V3) with one-click hand-off",
+    "Official @motrix/cli command-line client with MDXP JSON-RPC 2.0 protocol",
+    "Docker headless server mode with Web UI for NAS and home-server deployments",
+    "Dark mode, system tray integration, and launch at startup",
+    "GeoIP database integration for peer location display"
+  ],
+  "publicApiSurface": [
+    "MDXP protocol (JSON-RPC 2.0 over WebSocket and POST /mdxp)",
+    "command:createDownload",
+    "command:pauseTask / command:resumeTask / command:removeTask",
+    "command:addTorrentTask / command:addMagnetTask",
+    "command:updateSettings",
+    "command:installPlugin / command:uninstallPlugin / command:enablePlugin / command:disablePlugin",
+    "command:syncTrackers",
+    "command:enableNat / command:disableNat",
+    "event:taskUpdated / event:statsUpdated",
+    "event:engineStateChanged / event:engineDisconnected",
+    "event:pluginStatusChanged / event:pluginInstalled",
+    "bridge:listPaired / bridge:revokePair / bridge:resolvePair",
+    "@motrix/cli: motrix add, motrix list, motrix watch, motrix pair",
+    "GET /healthz (Docker server health endpoint)",
+    "motrix-admin pairing pending / approve / deny (Docker admin CLI)",
+    "App settings schema (appSettingsSchema)",
+    "Engine settings schema (engineSettingsSchema)",
+    "Proxy settings schema (proxySettingsSchema)",
+    "Tracker settings schema (trackerSettingsSchema)",
+    "Speed limit settings schema (speedLimitSettingsSchema)"
+  ]
+}

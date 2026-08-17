@@ -1,0 +1,215 @@
+---
+title: "MDXP: Motrix Download Exchange Protocol Reference"
+sidebarTitle: "MDXP Protocol"
+description: "MDXP is the JSON-RPC 2.0 protocol powering Motrix's CLI, browser extensions, and external integrations over WebSocket and HTTP POST endpoints."
+---
+
+MDXP (Motrix Download eXchange Protocol) is an open protocol built on JSON-RPC 2.0. It powers the `@motrix/cli`, browser extensions, and any custom automation tools that integrate with Motrix. The same wire protocol works across the desktop app, the headless Node.js server, and Docker deployments — clients pair once and then drive downloads, inspect tasks, and receive real-time events regardless of how Motrix is running.
+
+## Transport
+
+MDXP supports two primary transport mechanisms and a dedicated event stream for server-side deployments.
+
+<AccordionGroup>
+  <Accordion title="WebSocket — ws://localhost:16801">
+    Establishes a persistent, bidirectional connection to the headless server
+    default endpoint. Clients can send commands and queries at any time and
+    receive pushed events without polling.
+
+    ```
+    ws://localhost:16801
+    ```
+
+    Once connected, all traffic is JSON-RPC 2.0 frames (text messages). The
+    server pushes `notification` frames (no `id` field) for subscribed events.
+  </Accordion>
+
+  <Accordion title="HTTP POST — POST /mdxp">
+    Single request-response transport for one-off commands and queries. Each
+    HTTP POST carries exactly one JSON-RPC 2.0 request and returns one
+    JSON-RPC 2.0 response. Suitable for scripts, CI pipelines, and any
+    scenario where a persistent connection is unnecessary.
+
+    ```
+    POST http://localhost:16801/mdxp
+    Content-Type: application/json
+    Authorization: Bearer <token>
+    ```
+  </Accordion>
+
+  <Accordion title="Event Stream — GET /mdxp/events (SSE)">
+    Server-Sent Events stream for headless server deployments. Clients that
+    cannot hold a WebSocket open can subscribe to this endpoint instead. Each
+    event is a JSON-encoded MDXP notification frame.
+
+    ```
+    GET http://localhost:16801/mdxp/events
+    Authorization: Bearer <token>
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## JSON-RPC 2.0 Message Format
+
+Every MDXP message conforms to the [JSON-RPC 2.0 specification](https://www.jsonrpc.org/specification). Requests carry a `method` (the MDXP channel string) and optional `params`. Responses carry either a `result` on success or an `error` object on failure.
+
+```json
+// Request
+{
+  "jsonrpc": "2.0",
+  "id": "req-1",
+  "method": "task/add",
+  "params": {
+    "url": "https://example.com/file.iso",
+    "saveDir": "/downloads"
+  }
+}
+```
+
+```json
+// Success Response
+{
+  "jsonrpc": "2.0",
+  "id": "req-1",
+  "result": { "taskId": "abc123" }
+}
+```
+
+```json
+// Error Response
+{
+  "jsonrpc": "2.0",
+  "id": "req-1",
+  "error": { "code": -32600, "message": "Invalid request" }
+}
+```
+
+Pushed event notifications have no `id` field and are never answered by the client:
+
+```json
+// Server-pushed event notification
+{
+  "jsonrpc": "2.0",
+  "method": "event:taskUpdated",
+  "params": { "taskId": "abc123", "status": "complete" }
+}
+```
+
+## Authentication and Pairing
+
+Remote and headless-server clients authenticate through a device-code pairing flow. Once paired, subsequent requests carry a bearer token.
+
+<Steps>
+  <Step title="Request a device code">
+    The client calls the pairing endpoint to receive a short, human-readable
+    device code (e.g. `ABCD-EFGH`).
+  </Step>
+  <Step title="Approve in the UI or via motrix-admin">
+    The user approves the code in the Motrix Web UI, or an SSH operator runs:
+
+    ```bash
+    docker compose exec server motrix-admin pairing approve ABCD-EFGH
+    ```
+
+    To review pending requests first:
+
+    ```bash
+    docker compose exec server motrix-admin pairing pending
+    ```
+  </Step>
+  <Step title="Receive an access token">
+    Once approved, the client receives an access token. Store it securely for
+    future requests.
+  </Step>
+  <Step title="Use the token on every request">
+    Pass the token as a bearer header on all subsequent MDXP calls:
+
+    ```http
+    Authorization: Bearer <token>
+    ```
+  </Step>
+</Steps>
+
+<Warning>
+  Direct HTTP access is appropriate only on a trusted LAN. Internet or
+  untrusted-LAN deployments must sit behind a TLS reverse proxy with firewall
+  rules around ports 8080 and 16801.
+</Warning>
+
+## @motrix/mdxp Package
+
+The `@motrix/mdxp` npm package provides the shared JSON-RPC 2.0 wire schemas and Zod types for MDXP, with helpers for bidirectional WebSocket connections. It is the authoritative source of truth for all method names, parameter shapes, and result types used on the wire.
+
+```bash
+npm install @motrix/mdxp
+```
+
+```ts
+import { createMdxpClient } from '@motrix/mdxp'
+
+const client = await createMdxpClient({
+  url: 'ws://localhost:16801',
+  token: process.env.MOTRIX_TOKEN,
+})
+
+const result = await client.invoke('command:createDownload', {
+  url: 'https://example.com/file.iso',
+  saveDir: '/downloads',
+})
+```
+
+<Tip>
+  The `@motrix/cli` package (`npm install -g @motrix/cli`) wraps `@motrix/mdxp`
+  and provides the `motrix` command for everyday shell use and AI-agent
+  workflows, handling token storage and pairing automatically.
+</Tip>
+
+## Bridge (Browser Extension) Protocol
+
+The bridge is the subset of MDXP used by the Chrome and Firefox extensions. It handles extension pairing, trust management, and URL probing. All bridge channels are namespaced under `bridge:`.
+
+### Bridge Commands
+
+Commands sent from the renderer or admin tool to manage paired and trusted clients:
+
+| Channel | Description |
+|---------|-------------|
+| `bridge:revokePair` | Revoke a previously paired extension or CLI client |
+| `bridge:addTrusted` | Add an extension to the trusted registry |
+| `bridge:removeTrusted` | Remove an extension from the trusted registry |
+| `bridge:resolvePair` | Submit an allow/deny decision for a pending pairing request |
+
+### Bridge Queries
+
+Read-side queries for the pairing and URL-resolution pipeline:
+
+| Channel | Description |
+|---------|-------------|
+| `bridge:listPaired` | List all currently paired clients |
+| `bridge:listTrusted` | List all trusted extensions |
+| `bridge:probeUrl` | Check whether a URL can be handled by Motrix |
+| `bridge:resolveUrl` | Resolve a URL through installed URL Resolver plugins |
+| `bridge:cancelResolveUrl` | Cancel an in-flight URL resolution |
+| `bridge:listPendingPairRequests` | List pairing requests awaiting approval |
+
+### Bridge Events
+
+Real-time notifications for pairing lifecycle changes:
+
+| Channel | Description |
+|---------|-------------|
+| `bridge:pairRequested` | A new pairing request arrived (shows the approval prompt) |
+| `bridge:paired` | A client was successfully paired |
+| `bridge:revoked` | A paired client was revoked |
+| `bridge:error` | A bridge-level error occurred |
+| `bridge:pairRequestSettled` | A pending request reached a final allow/deny decision |
+| `bridge:pairRequestExpired` | A pending request lapsed past its TTL without a decision |
+
+<Note>
+  MDXP is the protocol used by external clients such as the CLI and browser
+  extensions. Renderer-IPC commands that operate on multiple tasks simultaneously
+  — for example `command:pauseTasks`, `command:resumeTasks`, and
+  `command:removeTasks` — are internal renderer-to-main channels and are
+  deliberately **not** exposed over MDXP. External integrations drive the
+  singular `task/*` wire methods instead.
+</Note>

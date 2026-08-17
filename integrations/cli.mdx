@@ -1,0 +1,99 @@
+---
+title: "Motrix CLI: Manage Downloads from the Command Line"
+sidebarTitle: "CLI Client"
+description: "Use @motrix/cli to add, list, watch, and manage Motrix downloads from the terminal. Supports local desktop discovery and remote pairing with the device-code flow."
+---
+
+`@motrix/cli` is the official command-line client for Motrix. It requires Node.js 22 or later. When you run any command, the CLI automatically discovers a local running Motrix desktop app — no configuration needed. For remote or headless instances (such as a Docker server on a NAS), the CLI pairs securely through the device-code flow so you can manage downloads from anywhere.
+
+## Installation
+
+Install the CLI globally with npm:
+
+```bash
+npm install -g @motrix/cli
+```
+
+You can also install it directly from the Motrix desktop app at **Settings → Integration → Command-line tools**, which handles the install without requiring a separate terminal step.
+
+<Note>
+  The CLI connects to the running desktop app automatically. For remote
+  instances, run `motrix pair` first to complete the device-code pairing flow.
+</Note>
+
+## Core Commands
+
+| Command | Description |
+|---|---|
+| `motrix add <url> [--save-dir <dir>]` | Add an HTTP/FTP download, optionally specifying the save directory |
+| `motrix add <magnet-uri>` | Add a magnet link or BitTorrent download |
+| `motrix list` | List all current downloads with their status |
+| `motrix watch --stats` | Stream live download progress as NDJSON |
+| `motrix pair --name <name>` | Pair with a remote or headless Motrix instance |
+
+## Usage Examples
+
+```bash
+# Add a file download with a specific save directory
+motrix add https://example.com/file.iso --save-dir ~/Downloads
+
+# Add a magnet link
+motrix add 'magnet:?xt=urn:btih:...'
+
+# Watch live progress (emits NDJSON lines)
+motrix watch --stats
+
+# List current downloads
+motrix list
+```
+
+## Remote Pairing
+
+For remote or headless Motrix instances — such as the Docker server running on a NAS or home server — the CLI uses a device-code flow to pair securely without exposing credentials.
+
+<Steps>
+  <Step title="Start the pairing request">
+    Run `motrix pair` on the machine where you want to control downloads from, passing a human-readable name:
+
+    ```bash
+    motrix pair --name my-nas
+    ```
+
+    The CLI displays a short alphanumeric code (for example, `ABCD-EFGH`).
+  </Step>
+  <Step title="Approve in the web UI">
+    Open the Motrix web UI at the server's address and approve the pairing request shown there. The code must match.
+  </Step>
+  <Step title="Approve via SSH (alternative)">
+    If the web UI is temporarily unreachable, an operator with SSH access to the server can approve the exact code directly:
+
+    ```bash
+    docker compose exec server motrix-admin pairing pending
+    docker compose exec server motrix-admin pairing approve ABCD-EFGH
+    ```
+  </Step>
+  <Step title="Start managing downloads">
+    Once approved, the CLI is trusted and all commands work against the remote instance.
+  </Step>
+</Steps>
+
+<Tip>
+  See the [Docker server deployment guide](/server/docker-deployment) for the full setup — including ownership, image selection, port configuration, and backup instructions.
+</Tip>
+
+## AI Agent Use
+
+The CLI is designed for both everyday human shell use and AI agent automation. Any tool that can invoke a subprocess and read its output can drive Motrix downloads programmatically.
+
+The `--stats` flag on `motrix watch` is particularly useful for agents: it emits one NDJSON line per progress event, making it straightforward to parse download speed, completion percentage, and status changes without screen-scraping a formatted display.
+
+```bash
+# Stream progress events as NDJSON for agent parsing
+motrix watch --stats
+# {"taskId":"abc123","status":"active","speed":2097152,"progress":0.42,...}
+# {"taskId":"abc123","status":"complete","progress":1.0,...}
+```
+
+<Info>
+  Motrix Turbo communicates over **MDXP** (Motrix Download eXchange Protocol), an open protocol built on JSON-RPC 2.0. The CLI uses MDXP under the hood, so agent integrations that need lower-level access can use the `@motrix/mdxp` npm package directly.
+</Info>

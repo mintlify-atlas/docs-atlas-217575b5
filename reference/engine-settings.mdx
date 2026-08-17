@@ -1,0 +1,211 @@
+---
+title: "Engine Settings Reference: aria2 and Download Engine Options"
+sidebarTitle: "Engine Settings"
+description: "Complete reference for Motrix engine settings controlling aria2 RPC, connection limits, BitTorrent, disk cache, DNS mode, and SQLite persistence."
+---
+
+Engine settings configure the bundled [aria2](https://aria2.github.io) download engine that powers every download task in Motrix. They are validated through `engineSettingsSchema` (Zod) and stored in the `engine` namespace of the Motrix settings store.
+
+Two update modes exist:
+
+- **RESTART** — the setting is passed to aria2 at startup only. Changing it requires restarting the engine (or the whole app) before it takes effect.
+- **HOT** — the setting can be applied to a running engine via the `aria2.changeGlobalOption` RPC call without any restart.
+
+<Warning>
+  Settings marked **RESTART** below do not affect an already-running engine. Restart the engine via **Settings → Engine → Restart Engine** (or quit and relaunch Motrix) after saving them.
+</Warning>
+
+---
+
+## RPC & Engine Startup <span style={{fontSize:'0.75rem',verticalAlign:'middle',marginLeft:'0.4rem',padding:'2px 6px',background:'#f59e0b22',borderRadius:'4px',color:'#b45309'}}>RESTART</span>
+
+<ParamField path="rpcPort" type="integer" default="16800">
+  Port on which aria2 listens for JSON-RPC connections. Must be in the range **1024–65535**. Motrix connects to this port internally; also exposed to any script that calls the aria2 RPC API directly.
+</ParamField>
+
+<ParamField path="rpcSecret" type="string" default="(auto-seeded)">
+  Secret token sent with every RPC request for authentication. The empty string is a sentinel — `SettingsManager` generates a random token on the first load. You can override it with any non-empty string.
+</ParamField>
+
+<ParamField path="listenPort" type="integer" default="6881">
+  TCP/UDP port that aria2 uses for incoming BitTorrent peer connections. Range: **1024–65535**. Make sure this port is open in your firewall if you want to accept incoming peers.
+</ParamField>
+
+<ParamField path="dhtListenPort" type="integer" default="6881">
+  UDP port for DHT (Distributed Hash Table) node communication. Range: **1024–65535**. Usually the same as `listenPort`.
+</ParamField>
+
+<ParamField path="dhtEnabled" type="boolean" default="true">
+  Enable the BitTorrent DHT network. DHT allows aria2 to find peers without a functioning tracker, which improves resilience on magnet links and torrents with dead trackers.
+</ParamField>
+
+---
+
+## Performance <span style={{fontSize:'0.75rem',verticalAlign:'middle',marginLeft:'0.4rem',padding:'2px 6px',background:'#22c55e22',borderRadius:'4px',color:'#15803d'}}>HOT</span>
+
+<ParamField path="maxConcurrentDownloads" type="integer" default="5">
+  Maximum number of downloads that can run simultaneously. Range: **1–100**. New tasks are queued when this limit is reached.
+</ParamField>
+
+<ParamField path="maxConnectionPerServer" type="integer" default="16">
+  Maximum number of parallel connections to a single HTTP/FTP server per download. Range: **1–16**. Higher values can improve speed on high-bandwidth links but may be throttled by the server.
+</ParamField>
+
+<ParamField path="split" type="integer" default="16">
+  Number of parallel download connections (segments) per file. Range: **1–128**. Each segment downloads a different byte range of the file. Effective only when the server supports range requests.
+</ParamField>
+
+<ParamField path="minSplitSize" type="integer (bytes)" default="10485760 (10 MB)">
+  Minimum file size required before aria2 splits it into multiple segments. Minimum: **1048576 bytes (1 MB)**. Files smaller than this value are downloaded as a single stream regardless of `split`.
+</ParamField>
+
+---
+
+## Network Reliability <span style={{fontSize:'0.75rem',verticalAlign:'middle',marginLeft:'0.4rem',padding:'2px 6px',background:'#22c55e22',borderRadius:'4px',color:'#15803d'}}>HOT</span>
+
+<ParamField path="userAgent" type="string" default='"Motrix/2.0"'>
+  HTTP `User-Agent` header sent with every download request. Some servers return different content or enforce limits based on the user agent string.
+</ParamField>
+
+<ParamField path="connectTimeout" type="integer (seconds)" default="30">
+  Seconds to wait for a TCP connection to be established before aria2 gives up. Range: **1–600**.
+</ParamField>
+
+<ParamField path="socketTimeout" type="integer (seconds)" default="30">
+  Seconds of inactivity on an established socket before aria2 considers the connection stalled. Range: **1–600**.
+</ParamField>
+
+<ParamField path="maxTries" type="integer" default="5">
+  Maximum number of retry attempts for a failed download segment or connection. Range: **0–100**. Set to `0` for unlimited retries.
+</ParamField>
+
+<ParamField path="retryWait" type="integer (seconds)" default="10">
+  Seconds to wait between retry attempts. Range: **0–300**. A short back-off prevents hammering a temporarily unreachable server.
+</ParamField>
+
+<ParamField path="lowestSpeedLimit" type="integer (bytes/s)" default="0 (disabled)">
+  If a download's speed drops below this threshold for a sustained period, aria2 will abandon and retry the connection. `0` disables the check. Minimum: **0**.
+</ParamField>
+
+<ParamField path="dnsMode" type='"auto" | "system" | "engine"' default='"auto"'>
+  DNS resolution strategy for download connections.
+
+  | Value | Behaviour |
+  |-------|-----------|
+  | `auto` | Engine resolver first; falls back to the OS resolver on transport failure and retries the failed task once |
+  | `system` | Always use the OS resolver (`async-dns=false` in aria2) |
+  | `engine` | Always use aria2's built-in async resolver; no fallback |
+
+  <Tip>
+    `auto` is the best choice for most users. Use `system` if you rely on a custom DNS configuration (e.g. Pi-hole, custom hosts file) and `engine` is bypassing it.
+  </Tip>
+</ParamField>
+
+---
+
+## BitTorrent <span style={{fontSize:'0.75rem',verticalAlign:'middle',marginLeft:'0.4rem',padding:'2px 6px',background:'#22c55e22',borderRadius:'4px',color:'#15803d'}}>HOT</span>
+
+<ParamField path="btMaxPeers" type="integer" default="128">
+  Maximum number of BitTorrent peers per torrent. Range: **1–1000**. Lower values reduce CPU and network overhead on seeded torrents; higher values can improve download speed on large swarms.
+</ParamField>
+
+<ParamField path="btEnableLpd" type="boolean" default="true">
+  Enable **Local Peer Discovery (LPD)**. When true, aria2 broadcasts and listens for peer announcements on the local network, allowing peers on the same LAN to be found without a tracker.
+</ParamField>
+
+<ParamField path="seedRatio" type="number" default="1.0">
+  Stop seeding when the upload/download ratio reaches this value. Range: **0–100**. Set to `0` to seed indefinitely regardless of ratio (subject to `seedTime`).
+</ParamField>
+
+<ParamField path="seedTime" type="integer (minutes)" default="60">
+  Stop seeding after this many minutes regardless of `seedRatio`. Range: **0–525600** (up to ~1 year). Set to `0` to disable the time limit.
+</ParamField>
+
+---
+
+## Disk & Session <span style={{fontSize:'0.75rem',verticalAlign:'middle',marginLeft:'0.4rem',padding:'2px 6px',background:'#f59e0b22',borderRadius:'4px',color:'#b45309'}}>RESTART</span>
+
+<ParamField path="fileAllocation" type='"none" | "prealloc" | "trunc" | "falloc"' default='"none"'>
+  Strategy aria2 uses to pre-allocate disk space when a download starts.
+
+  | Value | Description |
+  |-------|-------------|
+  | `none` | No pre-allocation; disk space is claimed as data arrives |
+  | `prealloc` | Pre-allocate using standard file write calls (portable, slower) |
+  | `trunc` | Use `ftruncate` to reserve the final file size immediately |
+  | `falloc` | Use `fallocate` (Linux only); fastest but requires filesystem support |
+
+  <Note>
+    `falloc` is the fastest option on ext4/xfs Linux filesystems. Use `none` on macOS and Windows.
+  </Note>
+</ParamField>
+
+<ParamField path="diskCache" type="integer (bytes)" default="67108864 (64 MB)">
+  In-memory read/write cache for download data. Range: **0–134217728 bytes (0–128 MB)**. A larger cache reduces disk I/O on spinning-disk drives; `0` disables caching entirely.
+</ParamField>
+
+<ParamField path="sessionSaveInterval" type="integer (seconds)" default="15">
+  How often aria2 writes the download session to disk so that progress can be resumed after a crash. Range: **10–3600**.
+</ParamField>
+
+---
+
+## SQLite Persistence <span style={{fontSize:'0.75rem',verticalAlign:'middle',marginLeft:'0.4rem',padding:'2px 6px',background:'#f59e0b22',borderRadius:'4px',color:'#b45309'}}>RESTART</span>
+
+These settings control the SQLite-backed download history provided by the Motrix fork of aria2 (`aria2_motrix`). All three require an engine restart to take effect.
+
+<ParamField path="sqlite3Persistence" type="boolean" default="true">
+  Enable SQLite3 storage for completed download history. When disabled, aria2 falls back to its default in-memory session file and history is lost on restart.
+</ParamField>
+
+<ParamField path="sqlite3DbPath" type="string (max 1024 chars)" default='"" (auto-seeded)'>
+  Absolute path to the SQLite database file. The empty string is a sentinel — `SettingsManager` resolves a platform-appropriate path in the app's data directory on first load. Must not contain null bytes.
+</ParamField>
+
+<ParamField path="sqlite3HistoryLimit" type="integer" default="-1 (unlimited)">
+  Maximum number of completed download records to keep in the database. Range: **-1–1,000,000**. `-1` means unlimited; older records beyond a positive limit are pruned automatically.
+</ParamField>
+
+---
+
+## Magnet
+
+<ParamField path="magnetResolveTimeout" type="integer (seconds)" default="120">
+  How long Motrix waits for a magnet link to resolve to torrent metadata before giving up. Range: **30–600**. Powered by the motrix-turbo resolver timer, independent of aria2.
+</ParamField>
+
+---
+
+## Full Default Configuration
+
+```json
+{
+  "rpcPort": 16800,
+  "rpcSecret": "<auto-generated>",
+  "listenPort": 6881,
+  "dhtListenPort": 6881,
+  "dhtEnabled": true,
+  "maxConcurrentDownloads": 5,
+  "maxConnectionPerServer": 16,
+  "split": 16,
+  "minSplitSize": 10485760,
+  "userAgent": "Motrix/2.0",
+  "connectTimeout": 30,
+  "socketTimeout": 30,
+  "maxTries": 5,
+  "retryWait": 10,
+  "lowestSpeedLimit": 0,
+  "dnsMode": "auto",
+  "btMaxPeers": 128,
+  "btEnableLpd": true,
+  "seedRatio": 1.0,
+  "seedTime": 60,
+  "fileAllocation": "none",
+  "diskCache": 67108864,
+  "sessionSaveInterval": 15,
+  "sqlite3Persistence": true,
+  "sqlite3DbPath": "<auto-seeded>",
+  "sqlite3HistoryLimit": -1,
+  "magnetResolveTimeout": 120
+}
+```

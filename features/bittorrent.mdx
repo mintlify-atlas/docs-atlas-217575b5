@@ -1,0 +1,109 @@
+---
+title: "BitTorrent Downloads, Magnet Links, and Tracker Management"
+sidebarTitle: "BitTorrent"
+description: "Motrix supports BitTorrent and magnet link downloads with per-file selection, DHT, LPD, UPnP/NAT-PMP port mapping, and automatic tracker list management."
+---
+
+Motrix supports BitTorrent alongside HTTP and FTP downloads — both `.torrent` files and `magnet://` links work through the same aria2 engine, with the same task queue, speed limits, and session recovery. Additional BitTorrent-specific features include per-file selection inside a torrent, DHT and Local Peer Discovery, UPnP/NAT-PMP port mapping, and an automatic tracker list manager that keeps your tracker pool healthy without any manual maintenance.
+
+## Adding Torrents
+
+Motrix accepts torrent downloads in three ways:
+
+<CardGroup cols={3}>
+  <Card title="Drag and Drop" icon="arrow-down-to-line">
+    Drag a `.torrent` file from your file manager directly onto the Motrix window. The Add Task dialog opens pre-filled with the torrent metadata.
+  </Card>
+  <Card title="Magnet Links" icon="magnet">
+    Paste a `magnet://` URI into the **Add Task** dialog, or click a magnet link in the browser while the Motrix browser extension is active.
+  </Card>
+  <Card title="Browser Extension" icon="puzzle-piece">
+    The Chrome and Firefox extensions intercept `.torrent` file downloads and magnet links on any page and hand them to Motrix in one click via the WebSocket bridge.
+  </Card>
+</CardGroup>
+
+## Per-File Selection
+
+When adding a `.torrent` file, Motrix reads the torrent's file list immediately and shows a selection dialog where you can tick the files you want to download. Files you deselect are skipped entirely — aria2 never requests their pieces.
+
+Magnet links work the same way, but the file list is not available until the torrent metadata has been resolved by peers. The `magnetFileSelection` app setting (default `true`) controls whether Motrix waits for metadata before showing the selection dialog:
+
+- **`magnetFileSelection: true`** — Motrix fetches metadata first, then opens the file selection dialog before any download data is written to disk.
+- **`magnetFileSelection: false`** — Motrix starts downloading all files immediately without prompting.
+
+Metadata resolution is time-bounded by `magnetResolveTimeout`:
+
+| Setting | Range | Default | Description |
+|---|---|---|---|
+| `magnetResolveTimeout` | 30–600 s | `120` | Seconds to wait for magnet metadata before timing out |
+
+If the timeout expires, Motrix falls back to starting the download without per-file selection.
+
+## BitTorrent Engine Settings
+
+The following engine settings are hot-reloadable via aria2's RPC interface unless noted otherwise.
+
+| Setting | Range / Type | Default | Description |
+|---|---|---|---|
+| `listenPort` | 1024–65535 | `6881` | RESTART — TCP/UDP port aria2 listens on for incoming peer connections |
+| `dhtEnabled` | boolean | `true` | HOT — enable the DHT distributed hash table for trackerless torrents |
+| `dhtListenPort` | 1024–65535 | `6881` | RESTART — UDP port for DHT traffic (typically same as `listenPort`) |
+| `btMaxPeers` | 1–1000 | `128` | HOT — maximum number of connected peers per torrent |
+| `btEnableLpd` | boolean | `true` | HOT — Local Peer Discovery broadcasts on the LAN to find peers without a tracker |
+| `seedRatio` | 0–100 | `1.0` | HOT — stop seeding when the upload/download ratio reaches this value (`0` = seed forever) |
+| `seedTime` | 0–525 600 min | `60` | HOT — stop seeding after this many minutes regardless of ratio (`0` = no time limit) |
+
+<Note>
+  Seeding continues after the download completes until either `seedRatio` or `seedTime` is reached — whichever comes first. To stop seeding a specific task early, select it and use **Stop Seeding** (`command:stopSeedingTask`) from the task context menu.
+</Note>
+
+## Port Mapping (UPnP / NAT-PMP)
+
+Motrix can automatically open the `listenPort` on your router using UPnP, NAT-PMP, or PCP, so that remote peers can initiate connections to you directly. This improves download speeds on torrents with few seeds.
+
+Port mapping is configured in **Settings → NAT**:
+
+| Setting | Type / Range | Default | Description |
+|---|---|---|---|
+| `enabled` | boolean | `true` | Master switch for all port-mapping protocols |
+| `preferredProtocol` | `auto` / `pcp` / `natpmp` / `upnp` | `auto` | Protocol to try first; `auto` negotiates with the router |
+| `mappingTtl` | 1200–7200 s | `7200` | Lease duration; Motrix renews the mapping before it expires |
+| `natTypeDetectionEnabled` | boolean | `false` | Opt-in STUN-based NAT type detection (privacy-sensitive) |
+| `portReachabilityCheckEnabled` | boolean | `false` | Opt-in external port reachability probe (privacy-sensitive) |
+| `autoDiagnostic` | boolean | `false` | Run NAT diagnostics on a schedule |
+| `diagnosticIntervalSec` | 300–86 400 s | `3600` | How often to run scheduled diagnostics |
+
+To run a one-off NAT diagnostic, open **Dashboard** and use the **NAT** tile's **Run Diagnostic** action, which dispatches `command:runNatDiagnostic`.
+
+## Tracker Management
+
+Motrix ships with a built-in tracker manager that keeps your tracker pool up to date without manual intervention. Two sources are enabled by default:
+
+| Source | ID | Description |
+|---|---|---|
+| ngosang/trackerslist (best) | `ngosang-best` | Direct from GitHub; community-curated best-performing trackers |
+| XIU2/TrackersListCollection (best) | `xiu2-best` | Direct from GitHub; independent curation |
+| ngosang/trackerslist (best, CDN) | `ngosang-best-cdn` | jsDelivr CDN mirror — use when GitHub is unreachable |
+| XIU2/TrackersListCollection (best, CDN) | `xiu2-best-cdn` | jsDelivr CDN mirror — use when GitHub is unreachable |
+
+Key tracker settings:
+
+| Setting | Type / Range | Default | Description |
+|---|---|---|---|
+| `autoSync` | boolean | `true` | Automatically fetch updated tracker lists in the background |
+| `syncIntervalHours` | 1–168 h | `12` | How often to sync tracker lists |
+| `sourcesEnabled` | boolean | `true` | Master switch for all tracker sources |
+| `probeEnabled` | boolean | `true` | Test each tracker's reachability before adding it |
+| `probeTimeoutMs` | 1000–30 000 ms | `5000` | Per-tracker probe timeout |
+| `healthyThresholdMs` | 500–10 000 ms | `3000` | Trackers responding slower than this are excluded |
+| `minSuccessRate` | 0–1 | `0.5` | Minimum probe success rate to include a tracker |
+| `maxTrackerCount` | 5–200 | `50` | Maximum number of trackers injected per torrent |
+| `blacklistEnabled` | boolean | `true` | Apply the built-in and custom tracker blacklists |
+
+### Per-Task Tracker Sync
+
+Trackers can be synced individually per task. The `syncTaskBtTracker` command re-fetches and applies the current healthy tracker list to a specific torrent without affecting other downloads. This is useful if a torrent stalls shortly after adding it.
+
+### Blacklist
+
+The XIU2/TrackersListCollection blacklist (`xiu2-blacklist`) is enabled by default. Trackers on the blacklist are never injected, even if they appear in a source file. You can add custom blacklist sources in **Settings → Trackers → Blacklist**.

@@ -1,0 +1,139 @@
+---
+title: "Install Motrix on macOS, Windows, and Linux"
+sidebarTitle: "Installation"
+description: "Download and install Motrix on macOS 12+, Windows, or Linux. Includes desktop app, CLI client, and Docker server installation instructions."
+---
+
+Motrix runs on all major desktop platforms and can also operate headlessly as a Docker server for NAS devices and home servers. Choose the installation method that fits your setup: the full desktop app, the lightweight CLI client, or the Docker server image.
+
+<Tabs>
+  <Tab title="Desktop App">
+    <Steps>
+      <Step title="Download the installer">
+        Download Motrix from [motrix.app](https://motrix.app) or from the [GitHub Releases page](https://github.com/agalwood/Motrix/releases). Choose the package that matches your operating system and architecture from the table below.
+
+        | Platform | Architectures | Packages | Recommendation |
+        |----------|---------------|----------|----------------|
+        | macOS 12+ | `arm64` (Apple Silicon), `x64` (Intel) | `.dmg` / `.zip` | Use the `.dmg` matching your Mac; choose `x64` only for an Intel-based Mac |
+        | Windows | `x64` | `.exe` (NSIS installer) / `.zip` | Use the `.exe` installer for a normal installation, or `.zip` for a manually extracted copy |
+        | Linux | `x64`, `arm64` | `.deb` / `.rpm` | Use `.deb` on Debian or Ubuntu; use `.rpm` on Fedora or openSUSE |
+
+        <Warning>
+          Motrix Turbo v2 is a beta release. Windows packages are unsigned and may trigger a Windows SmartScreen warning — click **More info → Run anyway** to proceed. AppImage and Snap packages are not published for this beta release.
+        </Warning>
+      </Step>
+      <Step title="Run the installer">
+        - **macOS:** Open the `.dmg`, drag Motrix to your Applications folder, then launch it from Launchpad or Spotlight.
+        - **Windows:** Run the `.exe` installer and follow the setup wizard. If SmartScreen appears, click **More info** and then **Run anyway**.
+        - **Linux:** Install the `.deb` with `sudo dpkg -i Motrix_*.deb` (Debian/Ubuntu) or the `.rpm` with `sudo rpm -i Motrix-*.rpm` (Fedora/openSUSE).
+      </Step>
+      <Step title="Launch Motrix">
+        Open Motrix from your applications launcher. On first launch, Motrix registers handlers for `motrix://`, `magnet:` links, and `.torrent` file associations automatically.
+      </Step>
+    </Steps>
+  </Tab>
+  <Tab title="CLI Client">
+    <Steps>
+      <Step title="Install the CLI globally">
+        The `@motrix/cli` package requires Node.js 22 or later. Install it globally with npm:
+
+        ```bash
+        npm install -g @motrix/cli
+        ```
+
+        Alternatively, you can install the CLI without leaving the desktop app: open **Settings → Integration → Command-line tools** and click **Install**.
+      </Step>
+      <Step title="Verify the installation">
+        Confirm the CLI is working:
+
+        ```bash
+        motrix --help
+        ```
+
+        The CLI automatically discovers a running local Motrix desktop app and pairs with it. Use `motrix pair --name my-device` to connect to a remote or headless instance.
+      </Step>
+    </Steps>
+  </Tab>
+  <Tab title="Docker Server">
+    <Steps>
+      <Step title="Create the data directories">
+        Create directories for Motrix state and your downloads, then set ownership to UID/GID 1000 (the non-root user the container runs as):
+
+        ```bash
+        mkdir -p motrix-data downloads
+        sudo chown 1000:1000 motrix-data downloads
+        ```
+      </Step>
+      <Step title="Set environment variables">
+        Export the image tag and the public Web URL that remote clients can reach. The `MOTRIX_PUBLIC_URL` is used for device-code pairing approval — set it to the actual address of your server:
+
+        ```bash
+        export MOTRIX_IMAGE='docker.io/motrixapp/motrix-server:2.0.0-beta.18'
+        export MOTRIX_PUBLIC_URL='http://nas.example.lan:8080'
+        ```
+      </Step>
+      <Step title="Start the server with Docker Compose">
+        Pull the image and start the server in the background. The `--wait` flag blocks until the container passes its health check:
+
+        ```yaml
+        # compose.yaml
+        name: motrix
+
+        services:
+          server:
+            image: "${MOTRIX_IMAGE:-motrixapp/motrix-server:latest}"
+            init: true
+            read_only: true
+            user: "${MOTRIX_UID:-1000}:${MOTRIX_GID:-1000}"
+            security_opt:
+              - no-new-privileges:true
+            restart: unless-stopped
+            stop_grace_period: 2m
+            tmpfs:
+              - /tmp:rw,noexec,nosuid,size=64m,mode=1777
+            environment:
+              MOTRIX_DATA_DIR: /data
+              MOTRIX_TEMP_DIR: /data/tmp
+              MOTRIX_PLUGIN_DIR: /data/plugins
+              MOTRIX_DEFAULT_SAVE_DIR: /downloads
+              MOTRIX_ALLOWED_SAVE_DIRS: /downloads
+              MOTRIX_MDXP_HOST: 0.0.0.0
+              MOTRIX_MDXP_PORT: 16801
+              MOTRIX_PUBLIC_URL: "${MOTRIX_PUBLIC_URL:-}"
+            ports:
+              - "${MOTRIX_WEB_BIND_IP:-${MOTRIX_BIND_IP:-0.0.0.0}}:${MOTRIX_HTTP_PORT:-8080}:8080"
+              - "${MOTRIX_MDXP_BIND_IP:-${MOTRIX_BIND_IP:-0.0.0.0}}:${MOTRIX_MDXP_PUBLIC_PORT:-16801}:16801"
+            volumes:
+              - ./motrix-data:/data
+              - ./downloads:/downloads
+        ```
+
+        ```bash
+        docker compose pull server
+        docker compose up -d --wait
+        ```
+
+        The Web UI is available on port **8080** and MDXP on port **16801**. Remote CLI and agent clients pair via the device-code flow. If the Web approval URL is temporarily unreachable, an SSH operator can approve pairing directly:
+
+        ```bash
+        docker compose exec server motrix-admin pairing pending
+        docker compose exec server motrix-admin pairing approve ABCD-EFGH
+        ```
+      </Step>
+    </Steps>
+  </Tab>
+</Tabs>
+
+## System Requirements
+
+| Component | Requirement |
+|-----------|-------------|
+| macOS | 12 (Monterey) or later — `arm64` (Apple Silicon) and `x64` (Intel) |
+| Windows | Windows 10 or Windows 11, `x64` only |
+| Linux | `x64` or `arm64` — `.deb` (Debian/Ubuntu) or `.rpm` (Fedora/openSUSE) |
+| CLI client | Node.js 22 or later |
+| Docker server | Docker Engine with Compose v2; multi-arch image supports `linux/amd64` and `linux/arm64` |
+
+<Note>
+  Flatpak users on Linux need the separate **Flatpak Native Host** companion package for browser extension integration. Install it via **Settings → Integration** in the desktop app, or build it with `pnpm package:flatpak-native-host` from source.
+</Note>

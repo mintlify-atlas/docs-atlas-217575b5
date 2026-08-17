@@ -1,0 +1,107 @@
+---
+title: "Motrix App Settings and Preferences"
+sidebarTitle: "Settings"
+description: "Configure Motrix appearance, behavior, notifications, protocols, and update channels through the Settings panel or programmatically via the IPC API."
+---
+
+Every preference in Motrix is validated against a strict [Zod](https://zod.dev) schema before it is written to disk, so invalid or out-of-range values are silently clamped to their defaults rather than causing errors. Settings persist across restarts in the app's data directory and can be read or written programmatically through the `command:updateSettings` IPC command — making them scriptable via the `@motrix/cli` client or any MDXP-compatible tool. The full settings object is split into named namespaces (`app`, `engine`, `speedLimit`, `nat`, `tracker`, `geoip`, and others); this page covers the `app` namespace and the cross-cutting options that affect day-to-day use.
+
+## General Settings
+
+These settings live in the `app` namespace and control startup, appearance, and file-saving behaviour.
+
+| Setting | Type | Default | Description |
+|---|---|---|---|
+| `launchAtStartup` | boolean | `false` | Register Motrix with the OS login-item or systemd user service so it starts when you log in |
+| `theme` | `system` / `light` / `dark` | `system` | UI colour scheme; `system` follows the OS dark-mode preference |
+| `language` | locale string | `en-US` | Interface language. Supported values: `en-US` (English), `zh-CN` (Simplified Chinese), `zh-TW` (Traditional Chinese) |
+| `defaultSaveDir` | string (path) | `~/Downloads` | Default directory for new downloads. Seeded to the OS Downloads folder on first launch; empty string falls back to the same default |
+| `runMode` | `Standard` / … | `Standard` | Application run mode. `Standard` is the normal desktop mode |
+| `warnBeforeQuit` | boolean | `true` | Show a confirmation dialog when quitting while downloads are active. Read at quit time — no restart needed |
+| `traySpeedometer` | boolean | `false` | Display live download/upload speed in the system tray icon |
+
+## Notifications
+
+Motrix emits system notifications via the OS notification centre and records them in the in-app notification centre accessible from the toolbar.
+
+| Setting | Type | Default | Description |
+|---|---|---|---|
+| `notifyOnComplete` | boolean | `true` | Send a notification when a download finishes successfully |
+| `notifyOnError` | boolean | `true` | Send a notification when a download fails after all retries are exhausted |
+
+Both settings are in the `app` namespace and take effect immediately without restarting the app.
+
+## Protocols
+
+Motrix can register itself as the default system handler for specific URL schemes and file types, so that clicking a link or opening a file in any app automatically routes it to Motrix.
+
+| Setting | Type | Default | Description |
+|---|---|---|---|
+| `protocols.magnet` | boolean | `true` | Register Motrix as the default handler for `magnet://` URIs |
+
+In addition to `magnet://`, Motrix always registers the `motrix://` protocol for deep-linking from the browser extension and the CLI, and associates itself with `.torrent` files so they open the Add Task dialog on double-click. The `motrix://` registration is not user-configurable.
+
+## Browser Integration
+
+The Motrix browser extensions for Chrome and Firefox communicate with the desktop app over a local WebSocket bridge. The bridge runs as a lightweight server inside the app process and uses the MDXP (Motrix Download eXchange Protocol) JSON-RPC wire format.
+
+| Setting | Type | Default | Description |
+|---|---|---|---|
+| `browserBridgeEnabled` | boolean | `true` | Enable the WebSocket bridge server that browser extensions connect to |
+
+<Note>
+  Changing `browserBridgeEnabled` requires an **app restart** to take effect. When disabled, the browser extension will report that it cannot connect to Motrix. The bridge listens only on `localhost` and is not exposed to the local network.
+</Note>
+
+## Auto-Update
+
+Motrix checks for updates in the background after launch and notifies you when a newer version is available. Downloading and installing the update is always user-triggered.
+
+| Setting | Type | Default | Description |
+|---|---|---|---|
+| `checkForUpdatesOnLaunch` | boolean | `true` | Check for a new release automatically when the packaged app starts |
+| `updateChannel` | `stable` / `beta` | `stable` | Release channel to track. `stable` never installs pre-release versions; `beta` accepts beta and subsequent stable releases |
+
+Switch to the `beta` channel in **Settings → About** to receive early access to new features. You can switch back to `stable` at any time; the next `stable` release that is newer than the installed version will be offered as an update.
+
+## Visual
+
+These settings control optional visual features and UI behaviour.
+
+| Setting | Type | Default | Description |
+|---|---|---|---|
+| `liquidGlassEffect` | boolean | `false` | Enable the macOS liquid-glass translucency effect on the main window. macOS only; has no effect on other platforms |
+| `magnetFileSelection` | boolean | `true` | Show the per-file selection dialog when adding a magnet link, after metadata has resolved. Set to `false` to start all files immediately |
+
+## Applying Settings Programmatically
+
+All settings can be updated at runtime through the `command:updateSettings` IPC command. The payload is a partial deep-merge of the settings object, so you only need to supply the keys you want to change.
+
+```bash
+# Using the @motrix/cli client
+motrix settings set app.theme dark
+motrix settings set app.traySpeedometer true
+motrix settings set engine.maxConcurrentDownloads 10
+```
+
+```json
+// Raw MDXP JSON-RPC payload
+{
+  "jsonrpc": "2.0",
+  "method": "command:updateSettings",
+  "params": {
+    "app": {
+      "theme": "dark",
+      "traySpeedometer": true
+    },
+    "engine": {
+      "maxConcurrentDownloads": 10
+    }
+  },
+  "id": 1
+}
+```
+
+<Note>
+  Most `app` namespace settings take effect immediately. Engine settings documented as **RESTART** (such as `rpcPort`, `listenPort`, `sqlite3Persistence`) require restarting the aria2 engine — Motrix will prompt you to do so after saving them through the Settings panel.
+</Note>

@@ -1,0 +1,100 @@
+---
+title: "Contributing to Motrix: Build, Test, and Lint"
+sidebarTitle: "Contributing"
+description: "Set up the Motrix development environment, run unit and E2E tests, lint with Biome, and build the desktop app or headless server."
+---
+
+Contributing to Motrix requires Node.js 22 or later and pnpm. The repository uses Vite for building, Vitest for unit tests, Playwright for E2E tests, and Biome for linting and formatting. The same codebase powers both the Electron desktop app and the Node.js headless server, so changes to `src/core/` affect both targets.
+
+## Prerequisites
+
+Before cloning the repository, make sure you have the following installed:
+
+- **Node.js 22 or later** — required by both the build system and the runtime.
+- **pnpm 11.21.0** — specified in the `packageManager` field in `package.json`. Use exactly this version to match CI. Install it with `corepack enable && corepack prepare pnpm@11.21.0 --activate`.
+
+After running `pnpm install`, a `postinstall` script automatically downloads the correct aria2 binary for your platform and rebuilds native modules (better-sqlite3) against the right Electron or Node ABI. You do not need to run these steps manually.
+
+## Setup
+
+<Steps>
+  <Step title="Clone the repository">
+    ```bash
+    git clone https://github.com/agalwood/Motrix.git && cd Motrix
+    ```
+  </Step>
+  <Step title="Install dependencies">
+    ```bash
+    pnpm install
+    ```
+    This installs all packages, downloads aria2 for your platform, and rebuilds native modules.
+  </Step>
+  <Step title="Start the development server">
+    ```bash
+    pnpm start
+    ```
+    Launches the Electron app in development mode with Vite HMR active in the renderer.
+  </Step>
+</Steps>
+
+## Development Scripts
+
+Use these commands during day-to-day development:
+
+| Command | Description |
+|---------|-------------|
+| `pnpm start` | Start Electron app in dev mode with Vite HMR |
+| `pnpm start:server` | Start headless server in dev mode |
+| `pnpm test` | Run Vitest unit tests |
+| `pnpm test:watch` | Watch mode unit tests |
+| `pnpm test:e2e` | Run Playwright E2E tests |
+| `pnpm run lint` | Run Biome checks |
+| `pnpm run lint:fix` | Fix Biome issues automatically |
+| `pnpm run format` | Format all files with Biome |
+| `pnpm build` | Full production build (desktop) |
+| `pnpm build:server` | Full production build (headless server) |
+
+<Tip>
+  Use `pnpm test:watch` during development for instant feedback on unit tests. Vitest reruns only the tests affected by your changes.
+</Tip>
+
+## Build Scripts
+
+These commands are used for packaging and staging release artifacts:
+
+| Command | Output |
+|---------|--------|
+| `pnpm build:electron` | Vite builds for main, preload, worker, and renderer targets |
+| `pnpm stage:electron` | Stage the packaged Electron app for distribution |
+| `pnpm build:server` | Server + web renderer build |
+| `pnpm stage:server` | Stage the server package for distribution |
+| `pnpm pack:mac` | Build and sign macOS package (arm64) |
+
+The `pnpm build` command runs `build:builtin` (fetches signed built-in plugins), `build:native-host` (compiles the Rust native messaging host), and then `build:electron` in sequence.
+
+## macOS In-Window Menu Preview
+
+Windows and Linux render the application menu as a dropdown inside the Motrix window. When developing on macOS, you can preview this in-window chrome by starting the app with the preview flag:
+
+```bash
+MOTRIX_PREVIEW_MAC_MENU=1 pnpm start
+```
+
+This flag hides the macOS traffic-light buttons and enables the renderer dropdown menu so you can inspect layout and command items without switching machines. Restart the development process after changing the flag — both Electron and Vite read it at startup.
+
+<Warning>
+  This mode is intended for layout and command-item debugging only. Electron routes macOS role items through AppKit's native menu, so role-backed actions such as **Window → Minimize** do not behave identically when invoked from the preview dropdown. Always validate those native role actions on Windows or Linux.
+</Warning>
+
+## Architecture Checks
+
+CI enforces strict layer boundaries to keep `src/core/` portable and prevent cross-layer imports. You can run the same checks locally before pushing:
+
+| Command | What it checks |
+|---------|---------------|
+| `pnpm run check:boundaries` | Enforces import boundaries between layers |
+| `pnpm run check:file-names` | Ensures all files follow kebab-case naming |
+| `pnpm run check:i18n` | Validates locale catalogs for missing or extra keys |
+| `pnpm run check:schema-parity` | Confirms shared Zod schemas match wire definitions |
+
+Run `pnpm run check:boundaries` locally whenever you add new imports between `src/core/`, `src/main/`, `src/renderer/`, or `src/server/`. See the [Architecture](/development/architecture) page for the full layer rules.

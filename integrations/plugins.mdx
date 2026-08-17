@@ -1,0 +1,136 @@
+---
+title: "Motrix Plugin System: Extend Downloads with Sandboxed Plugins"
+sidebarTitle: "Plugins"
+description: "Motrix plugins run in QuickJS sandboxes with declared permissions. Install from the in-app marketplace, GitHub, or a URL. Build custom plugins with the Plugin SDK."
+---
+
+Motrix plugins extend the download manager with URL resolvers, post-download actions, filename templates, and more. Every plugin runs in an isolated QuickJS sandbox — plugins have no direct access to the filesystem, network, or Node.js APIs. All capabilities must be declared in the plugin manifest and approved by the user before they are granted.
+
+## Plugin Statuses
+
+Every installed plugin is always in one of four states:
+
+| Status | Meaning |
+|---|---|
+| `inactive` | Installed and enabled, but the plugin VM is not currently running |
+| `active` | The plugin VM is running and the plugin is ready to handle hooks |
+| `disabled` | Disabled by the user, or automatically disabled by the circuit breaker after repeated failures |
+| `error` | The last load attempt or hook invocation failed |
+
+A plugin cycles from `inactive` → `active` when one of its declared `activationEvents` fires. It returns to `inactive` when the event subsides. If a plugin lands in `error`, Motrix surfaces the last error message in **Settings → Plugins** so you can diagnose the problem.
+
+## Built-in Plugins
+
+Motrix ships three official built-in plugins, distributed as signed `.moext` packages and automatically kept up to date through the built-in update channel:
+
+<CardGroup cols={3}>
+  <Card title="Filename Template" icon="file-signature">
+    Rename downloaded files from a user-defined template before they are saved to disk. Supports variables like title, date, and resolution.
+  </Card>
+  <Card title="Page Scraper" icon="magnifying-glass">
+    Extracts direct file download links from HTML pages. Useful for sites that wrap files in a landing page rather than serving a direct URL.
+  </Card>
+  <Card title="URL Resolver" icon="link">
+    The foundation for site-specific media resolution. Resolves a page URL into a direct stream or file URL. Third-party resolver plugins build on this base.
+  </Card>
+</CardGroup>
+
+## Installing Plugins
+
+<Tabs>
+  <Tab title="In-App Marketplace">
+    Open **Settings → Plugins → Marketplace** to browse the Plugin Registry. Each listing shows the plugin's permissions, author, and version. Click **Install** and Motrix presents a consent dialog before downloading anything.
+  </Tab>
+  <Tab title="GitHub">
+    If you know the plugin's GitHub repository, you can install it directly using the `github:` scheme:
+
+    ```text
+    github:owner/repository
+    ```
+
+    Enter this in the **Install from URL** field in **Settings → Plugins**. Motrix fetches the latest release, shows the consent dialog, and installs the `.moext` package.
+  </Tab>
+  <Tab title="Direct URL">
+    Install any `.moext` package hosted at a public HTTPS URL:
+
+    ```text
+    https://example.com/plugins/my-plugin-1.0.0.moext
+    ```
+
+    Enter the URL in **Settings → Plugins → Install from URL**. The consent dialog shows the full permission set before anything is installed.
+  </Tab>
+</Tabs>
+
+<Note>
+  The Plugin Registry publishes listings at `dl.motrix.app/registry/plugins.json` — this feed is used by both the Motrix website and the in-app marketplace. Plugin packages use the `.moext` extension, which is a standard ZIP archive containing the plugin bundle and manifest.
+</Note>
+
+## Plugin Permissions
+
+Plugins declare what they need in their `motrix-plugin.json` manifest. Motrix enforces three categories:
+
+| Field | Purpose |
+|---|---|
+| `permissions` | Required capabilities — the plugin cannot function without these. Motrix requests approval before install. |
+| `optionalPermissions` | Capabilities that enhance the plugin but are not required. The user can grant or revoke these per-plugin at any time. |
+| `hostPermissions` | URL patterns the plugin is allowed to make requests against. Scoped to specific origins to limit network exposure. |
+
+Before a plugin is installed, Motrix displays the full trust surface: all permissions, optional permissions, host permission patterns (flagging any that are broadly scoped), declared heap size, and engine compatibility. For upgrades, only the diff — what changed since last consent — is highlighted.
+
+Optional permission grants can be updated at any time via **Settings → Plugins** without reinstalling. Internally this calls the `command:updatePluginGrants` command.
+
+## Plugin Hooks
+
+Plugins declare which lifecycle events they respond to using `activationEvents` and `contributes.hooks` in their manifest. Motrix invokes the matching hook function in the plugin VM at the appropriate point in the download lifecycle:
+
+<CardGroup cols={2}>
+  <Card title="beforeCreate" icon="circle-plus">
+    Fired before a download task is created. Plugins can inspect or rewrite the URL, headers, save directory, or filename. Ideal for URL resolvers and filename template plugins.
+  </Card>
+  <Card title="beforeFinalize" icon="circle-check">
+    Fired after the download completes but before the file is moved to its final path. Plugins can inspect the downloaded file path and the originating task.
+  </Card>
+  <Card title="afterComplete" icon="flag-checkered">
+    Fired once the file is in its final location. Suitable for post-processing actions like sending a notification, triggering a script, or moving a file to a media library.
+  </Card>
+  <Card title="onError" icon="circle-exclamation">
+    Fired when a download task encounters an error. Receives the task and a structured error object with a `code` and `message`. Useful for alerting or retry logic.
+  </Card>
+</CardGroup>
+
+The default plugin scaffold starts with a `beforeCreate` URL resolver. Pass `post-action` when creating a new project to start with an `afterComplete` notification template instead.
+
+## Building a Plugin
+
+The [Motrix Plugin SDK](https://github.com/motrixapp/plugin-sdk) provides four npm packages: `@motrix/plugin-manifest-schema`, `@motrix/plugin-api`, `@motrix/plugin-cli`, and `create-motrix-plugin`. Use the scaffolder to start a new plugin:
+
+```bash
+pnpm create motrix-plugin my-plugin
+cd my-plugin && pnpm install
+
+pnpm dev                          # Watch-build and launch Motrix with the plugin loaded
+pnpm exec motrix-plugin validate  # Validate motrix-plugin.json against the schema
+pnpm run pack                     # Create dist/<id>-<version>.moext
+pnpm exec motrix-plugin lint      # Check the packed bundle for issues
+```
+
+Plugins are compiled to a single ES2020 module. The `pnpm dev` command watch-builds the plugin and launches the Motrix desktop app with it loaded, so changes are reflected immediately. When you are ready to distribute, `pnpm run pack` produces the `.moext` archive.
+
+<Tip>
+  See the [Plugin SDK documentation](/development/plugin-sdk) for the full manifest reference, runtime API, sandbox constraints, localization, and distribution guide.
+</Tip>
+
+## Plugin Sources
+
+Motrix tracks where each plugin came from. The `source.type` field on an installed plugin is one of:
+
+| Source type | Description |
+|---|---|
+| `github` | Installed from a `github:owner/repository` reference |
+| `url` | Installed from a direct HTTPS URL to a `.moext` package |
+| `local` | Installed from a local file path |
+| `registry` | Installed through the in-app marketplace (Plugin Registry) |
+| `builtin` | One of the three official built-in plugins bundled with Motrix |
+| `builtin-update` | A built-in plugin whose active code comes from a signature-verified overlay update rather than the original bundled seed |
+| `dev` | Loaded via `MOTRIX_PLUGIN_DEV_PATH` — bypasses the installer and consent flow entirely, for development use only |
+| `volume` / `env` | Operator-deployed plugins injected via Docker volume mount or environment variable, for server deployments |

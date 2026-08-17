@@ -1,0 +1,67 @@
+---
+title: "Motrix Server Environment Variable Reference"
+sidebarTitle: "Environment Reference"
+description: "Complete reference for all environment variables supported by the Motrix Server Docker image, including paths, ports, plugins, and security options."
+---
+
+All Motrix Server configuration is done through environment variables. The included `compose.yaml` provides sensible defaults for the most common options — in most deployments you only need to set `MOTRIX_IMAGE`, `MOTRIX_PUBLIC_URL`, `MOTRIX_UID`, and `MOTRIX_GID`. The table below covers every variable the image recognises, its default value as baked into the image or set by the Compose file, and guidance on when to change it.
+
+## Variable Reference
+
+| Variable | Image Default | Notes |
+|----------|--------------|-------|
+| `PORT` | `8080` | Web/API listen port inside the container |
+| `MOTRIX_DATA_DIR` | `/data` | Must be absolute and writable; mount a persistent volume here |
+| `MOTRIX_TEMP_DIR` | `/data/tmp` | Must be absolute and writable; created under `/data` by default |
+| `MOTRIX_DEFAULT_SAVE_DIR` | `/downloads` | Default destination for new download tasks |
+| `MOTRIX_ALLOWED_SAVE_DIRS` | `/downloads` | Colon-separated server-enforced roots; tasks outside these paths are rejected |
+| `MOTRIX_PLUGIN_DIR` | `/data/plugins` | Writable persistent root for user-installed plugins; survives container replacement |
+| `MOTRIX_BUILTIN_PLUGIN_DIR` | `/app/builtin-plugins` | Read-only root for built-in plugins baked into the image |
+| `MOTRIX_PLUGIN_IMPORT_DIRS` | _(empty)_ | Colon-separated, explicitly mounted read-only roots containing local `.moext` packages |
+| `MOTRIX_PLUGIN_INSTALL_URLS` | _(empty)_ | Declarative startup plugin sources — comma-separated or a JSON array of `https://`, `github:owner/repo`, or `registry:plugin.id` values; any failed source stops startup with its reason |
+| `MOTRIX_ALLOW_UNMANAGED_PLUGINS` | `false` | Set to `true` to allow plugin directories without install provenance; unnecessary for normal `.moext`, URL, or registry installs |
+| `MOTRIX_OPERATOR_TOKEN` | _(generated file)_ | Operator control-plane credential; if unset, the server generates `/data/operator-token` at mode `0600` on first start |
+| `MOTRIX_SECRETS_SEED` | _(generated lockbox)_ | 64-hex-character plugin secret key; if unset, `/data/secrets.lockbox` is generated and persisted |
+| `MOTRIX_WEB_BIND_IP` | `0.0.0.0` _(Compose)_ | Host address publishing container port 8080; falls back through `MOTRIX_BIND_IP` then `0.0.0.0` |
+| `MOTRIX_MDXP_BIND_IP` | `0.0.0.0` _(Compose)_ | Host address publishing container port 16801; falls back through `MOTRIX_BIND_IP` then `0.0.0.0` |
+| `MOTRIX_BIND_IP` | `0.0.0.0` _(Compose)_ | Backward-compatible shared host-publish fallback for both services |
+| `MOTRIX_MDXP_HOST` | `127.0.0.1` _(runtime)_; `0.0.0.0` _(Compose)_ | MDXP listener inside the container — not the host publish address; the Compose file sets this to `0.0.0.0` so Docker port forwarding works |
+| `MOTRIX_MDXP_PORT` | `16801` | MDXP listen port inside the container; set to `0` to disable a stable published MDXP port |
+| `MOTRIX_PUBLIC_URL` | _(unset)_ | Externally reachable Web approval URL returned to device-code clients; never defaults to localhost — set this explicitly whenever a remote client must pair |
+| `MOTRIX_FFMPEG_PATH` | _(auto-detect)_ | Optional absolute path to an FFmpeg binary; the official image does not include FFmpeg |
+| `MOTRIX_HOST_LANGUAGE` | _(system setting)_ | Override the server and plugin locale, e.g. `en-US` or `zh-CN` |
+| `LOG_LEVEL` | `info` | Pino log level written to container stdout; valid values are `trace`, `debug`, `info`, `warn`, `error`, `fatal` |
+
+## Adding Extra Download Roots
+
+By default the server only allows tasks to save into `/downloads`. To permit an additional archive volume, mount it and add its path to `MOTRIX_ALLOWED_SAVE_DIRS`. Both the mount and the allow-list entry are required — adding the variable without the mount produces a startup failure.
+
+```yaml
+services:
+  server:
+    environment:
+      MOTRIX_DEFAULT_SAVE_DIR: /downloads
+      MOTRIX_ALLOWED_SAVE_DIRS: /downloads:/archive
+    volumes:
+      - ./motrix-data:/data
+      - ./downloads:/downloads
+      - /srv/archive:/archive
+```
+
+The server performs canonical-path checks on every task save directory to reject traversal attempts and symlink escapes.
+
+## FFmpeg for Media Plugins
+
+The official image does not include FFmpeg to keep the image small. Plugins that require it — such as media post-processors or URL resolvers that need format conversion — will fail at the FFmpeg detection step unless you provide a binary. The recommended approach is a thin derived image built from the official one:
+
+```dockerfile
+FROM motrixapp/motrix-server:2.0.0-beta.18
+RUN apk add --no-cache ffmpeg
+ENV MOTRIX_FFMPEG_PATH=/usr/bin/ffmpeg
+```
+
+Build the derived image, push it to your own registry, and set `MOTRIX_IMAGE` to its reference in your deployment.
+
+<Note>
+  `MOTRIX_ARIA2_BIN`, `MOTRIX_EXTRA_DIR`, and `MOTRIX_RENDERER_DIR` are fixed by the official image and point to paths baked into the container. Override them only in a custom image that provides the corresponding artifacts at the new paths.
+</Note>

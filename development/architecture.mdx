@@ -1,0 +1,112 @@
+---
+title: "Motrix Architecture: Four-Layer Codebase Design"
+sidebarTitle: "Architecture"
+description: "Explore Motrix's four-layer architecture: React renderer, app core, engine adapter, and aria2. Understand IPC, MDXP protocol, and the shared desktop/server core."
+---
+
+Motrix uses a strict four-layer architecture enforced by CI boundary checks. The same core — covering tasks, settings, plugins, bridge, NAT, tracker, stats, activity, and notifications — powers both the Electron desktop app and the Node.js headless server. Platform-specific capabilities such as system notifications and secret storage have separate implementations behind a consistent interface, keeping the core free of Electron and Node.js dependencies.
+
+## The Four Layers
+
+The dependency flow runs in one direction only, from the renderer down to aria2:
+
+```text
+renderer (React UI)
+   │  IPC via window.motrix
+app core (tasks, settings, plugins, bridge)
+   │
+engine adapter
+   │
+aria2 (download engine)
+```
+
+### Renderer
+
+The renderer is a React 19 application styled with Tailwind CSS 4 and shadcn/ui components. It lives in `src/renderer/` and communicates with the Electron main process exclusively through the `window.motrix` object exposed by the preload script. The renderer never imports from `src/core/`, `src/main/`, or `src/server/` — all communication goes through the shared protocol constants defined in `src/shared/protocol/`.
+
+### App Core
+
+`src/core/` contains the platform-agnostic business logic: task management, settings persistence, plugin lifecycle, the bridge (browser extension WebSocket server), NAT port mapping, tracker list management, transfer stats, activity tracking, and in-app notifications. Because it imports neither `electron` nor Node.js platform APIs, the same code runs inside both the Electron main process and the Node.js headless server.
+
+### Engine Adapter
+
+The engine adapter wraps aria2's JSON-RPC API. It owns the engine lifecycle — start, stop, and restart — as well as connection management, retry logic, and error recovery. The rest of the core calls the adapter's interface and never speaks to aria2 directly.
+
+### aria2
+
+Motrix ships a maintained fork of [aria2](https://github.com/motrixapp/aria2) bundled with the application. Every download operation — HTTP, FTP, BitTorrent, magnet links — goes through aria2. The binary is downloaded for your platform during `pnpm install`.
+
+## Source Structure
+
+| Path | Description |
+|------|-------------|
+| `src/core/` | Platform-agnostic app core shared between desktop and server |
+| `src/main/` | Electron main process (IPC handlers, native platform APIs) |
+| `src/renderer/` | React UI (components, features, stores, routes) |
+| `src/server/` | Node.js headless server (Fastify HTTP, WebSocket, server IPC) |
+| `src/preload/` | Electron preload script (exposes `window.motrix` API) |
+| `src/shared/` | Shared types, schemas, protocol definitions, and constants |
+| `packages/native-host/` | Rust native messaging host for the browser extension |
+
+## IPC and Protocol
+
+Motrix has two distinct communication layers:
+
+### Renderer IPC (Electron)
+
+Inside the desktop app, the renderer talks to the main process through the `window.motrix` object injected by `src/preload/`. Commands are defined as constants in `src/shared/protocol/commands.ts` and events in `src/shared/protocol/events.ts`. These channel names are Renderer-IPC only and are deliberately not exposed over MDXP — the renderer uses plural bulk commands (for example `command:pauseTasks`) as an optimisation that external clients do not need.
+
+A sample of the available commands:
+
+```typescript
+// src/shared/protocol/commands.ts
+export const Commands = {
+  CreateDownload:    'command:createDownload',
+  PauseTask:         'command:pauseTask',
+  ResumeTask:        'command:resumeTask',
+  RemoveTask:        'command:removeTask',
+  UpdateSettings:    'command:updateSettings',
+  EnablePlugin:      'command:enablePlugin',
+  DisablePlugin:     'command:disablePlugin',
+  InstallPlugin:     'command:installPlugin',
+  UninstallPlugin:   'command:uninstallPlugin',
+  RestartEngine:     'command:restartEngine',
+  // ...and many more
+} as const
+```
+
+### MDXP (External Protocol)
+
+MDXP — Motrix Download eXchange Protocol — is a JSON-RPC 2.0 protocol used by CLI clients, browser extensions, and AI agents. It is available over WebSocket and as `POST /mdxp`. The `@motrix/mdxp` package defines the shared wire schemas and Zod types, with helpers for bidirectional connections. MDXP covers task management, settings, and bridge operations. The desktop app listens on port 16800 by default; the headless server uses port 16801.
+
+## Build System
+
+Motrix uses Vite with separate configuration files for each compilation target:
+
+| Config file | Target |
+|-------------|--------|
+| `vite.main.config.ts` | Electron main process |
+| `vite.preload.config.ts` | Electron preload script |
+| `vite.worker.config.ts` | Shared worker (used by both desktop and server) |
+| `vite.renderer.config.ts` | React UI for the desktop app |
+| `vite.server.config.ts` | Node.js headless server |
+| `vite.renderer.web.config.ts` | React UI for the server's web interface |
+
+Running `pnpm build` executes all four Electron targets in sequence after fetching signed built-in plugins and compiling the Rust native messaging host. Running `pnpm build:server` builds the server and its web renderer instead.
+
+## Key Dependencies
+
+| Area | Technology |
+|------|-----------|
+| Desktop shell | Electron 43 |
+| UI framework | React 19 + Tailwind CSS 4 + shadcn/ui |
+| Schema validation | Zod 4 |
+| Database | better-sqlite3 |
+| Plugin sandbox | quickjs-emscripten |
+| Server HTTP | Fastify 5 + WebSocket |
+| Linting | Biome |
+| Testing | Vitest + Playwright |
+
+<Note>
+  CI runs `check:boundaries` on every pull request to prevent cross-layer imports. The most important rule is that `src/core/` must never import `electron` or anything from `src/main/`. Keep the core free of all Electron and Node.js platform APIs to preserve its portability to the headless server and to leave a clear path for a future Rust rewrite.
+</Note>

@@ -1,47 +1,83 @@
 ---
-title: "Quickstart"
-description: "Begin with a guide on the fastest path to a successful outcome"
+title: "Get Started with Motrix in 5 Minutes"
+sidebarTitle: "Quickstart"
+description: "Learn how to add your first download, start a torrent, use the CLI client, and explore the Motrix dashboard in a few quick steps."
 ---
 
-Describe how someone begins using your product. What is the first thing they need to do? Are there any prerequisites?
-
-A quickstart should take someone from zero to using your product. They'll get a quick win and a sense of what they can accomplish.
-
-## Prerequisites
-
-Before you begin, you must have:
-
-- Requirement one (for example, Node.js 18+, a free account, an API key)
-- Requirement two (for example, a compatible device, a compatible browser, a compatible operating system)
-
-## Get started
+Motrix is designed to get out of your way. Once installed, you can add a download from a URL or magnet link in seconds, monitor everything from the Dashboard, and reach the same functionality from the terminal with the `@motrix/cli` package. This guide walks you through the essentials so you can start downloading right away.
 
 <Steps>
-  <Step title="Install">
-    Describe how to install your product or sign up.
-
-    ```bash
-    npm install your-package
-    ```
+  <Step title="Install Motrix">
+    If you haven't installed Motrix yet, head to the [Installation](/installation) page and choose the method for your platform — desktop app, CLI client, or Docker server. The quickstart steps below assume you have the desktop app running.
   </Step>
-  <Step title="Configure">
-    Describe any setup or configuration needed before first use.
 
-    ```bash
-    your-cli init
-    ```
+  <Step title="Add your first download">
+    Click the **+** button (or press `N`) to open the **Add Task** dialog.
+
+    1. Paste any HTTP or FTP URL into the URL field.
+    2. Set the **Save directory** — Motrix defaults to your configured download folder, but you can change it per task.
+    3. Optionally adjust the filename, connection count, or speed limit.
+    4. Click **Confirm** to start the download immediately.
+
+    The new task appears in the **Downloading** list as a tile showing live speed, ETA, and progress. Completed downloads move to the **Completed** list automatically. SQLite-backed sessions mean your downloads survive an app restart — they resume from where they left off.
   </Step>
-  <Step title="Run it">
-    Show the first thing a user does to see it working.
+
+  <Step title="Add a torrent or magnet link">
+    Motrix handles BitTorrent natively with full per-file selection.
+
+    - **Drag a `.torrent` file** onto the Motrix window — the Add Task dialog opens with the torrent pre-loaded.
+    - **Paste a `magnet://` URI** into the Add Task URL field — Motrix resolves the metadata automatically.
+
+    In the torrent dialog you can:
+    - Select which files inside the torrent to download.
+    - Set a save directory for the torrent contents.
+    - Configure upload/download speed limits for this task.
+
+    Motrix manages the tracker list automatically, running health checks and refreshing entries so your torrents stay well-connected.
+  </Step>
+
+  <Step title="Try the CLI">
+    The `@motrix/cli` package brings the full Motrix feature set to your terminal. After [installing the CLI](/installation#cli-client), try these commands:
 
     ```bash
-    your-cli start
+    # Add a download directly from the shell
+    motrix add https://example.com/file.iso --save-dir ~/Downloads
+
+    # List all current downloads and their status
+    motrix list
+
+    # Stream live download progress as NDJSON
+    motrix watch --stats
     ```
+
+    The CLI automatically discovers a running local Motrix desktop app — no manual configuration needed. Use `motrix pair --name my-nas` to connect to a remote or headless Docker server instance.
+  </Step>
+
+  <Step title="Explore the dashboard">
+    The **Dashboard** is your at-a-glance overview of everything Motrix is doing.
+
+    - **Task tiles** show each active download with real-time speed, progress bar, and ETA.
+    - **Transfer stats** display aggregate upload and download speeds across all active tasks.
+    - **Speed charts** visualize bandwidth usage over time so you can spot throttling or stalls.
+    - **System tray integration** keeps Motrix accessible without occupying a window — click the tray icon to show or hide the app at any time.
+
+    Customize which panels are visible from the Dashboard settings to match your workflow.
   </Step>
 </Steps>
 
-<Tip>
-  Give people a way to get help. This could be a link to a support page, a chat with a customer support agent, or a forum for your product.
+## Next Steps
 
-  Example: Need help? Reach out to us at [support@yourcompany.com](mailto:support@yourcompany.com).
-</Tip>
+<CardGroup cols={2}>
+  <Card title="Downloads" icon="arrow-down-to-line" href="/features/downloads">
+    Learn about multi-connection acceleration, per-task speed profiles, session recovery, and more.
+  </Card>
+  <Card title="BitTorrent" icon="magnet" href="/features/bittorrent">
+    Explore per-file selection, tracker management, UPnP port mapping, and seeding controls.
+  </Card>
+  <Card title="CLI Client" icon="terminal" href="/integrations/cli">
+    Use `@motrix/cli` for shell scripting, automation, and pairing with remote Motrix instances.
+  </Card>
+  <Card title="Plugins" icon="puzzle-piece" href="/integrations/plugins">
+    Discover and install plugins from the in-app marketplace, or build your own with the Plugin SDK.
+  </Card>
+</CardGroup>

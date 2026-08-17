@@ -1,0 +1,108 @@
+---
+title: "Speed Limits, Profiles, and Turtle Mode in Motrix"
+sidebarTitle: "Speed Limits"
+description: "Motrix supports upload and download speed limit profiles, scheduled turtle mode, adaptive limits based on available bandwidth, and video-app detection."
+---
+
+Motrix gives you fine-grained control over how much bandwidth downloads are allowed to use. You can set static upload and download ceilings, switch to a slower "turtle" profile on demand, automate that switch on a daily schedule, let Motrix measure your available bandwidth and self-calibrate, or have the slower profile kick in automatically whenever a video player is running. All speed values are in **bytes per second**; a value of `0` means unlimited.
+
+## Speed Limit Profiles
+
+Motrix defines two named profiles:
+
+<CardGroup cols={2}>
+  <Card title="Base Profile" icon="gauge-high">
+    The **base** profile is the normal operating limit. Both `download` and `upload` default to `0` (unlimited). Configure this to set a permanent ceiling on Motrix's bandwidth usage.
+  </Card>
+  <Card title="Alt Profile (Turtle)" icon="turtle">
+    The **alt** profile is the conservative limit used when turtle mode is active. It defaults to **512 KB/s download** (`524 288` bytes/s) and **64 KB/s upload** (`65 536` bytes/s).
+  </Card>
+</CardGroup>
+
+Each profile has two fields:
+
+| Field | Type | Description |
+|---|---|---|
+| `download` | bytes/s, ≥0 | Maximum download speed (`0` = unlimited) |
+| `upload` | bytes/s, ≥0 | Maximum upload speed, applies to BitTorrent seeding (`0` = unlimited) |
+
+<Tip>
+  Use the schedule to automatically limit speeds during work hours or overnight, and use adaptive mode on shared home connections so Motrix backs off when other devices are active.
+</Tip>
+
+## Turtle Mode
+
+The `turtle` setting has three states:
+
+<Tabs>
+  <Tab title="off (default)">
+    The **base** profile is always used. No automatic switching occurs. This is the default state.
+  </Tab>
+  <Tab title="on">
+    The **alt** profile is always applied. Use this when you want to throttle Motrix immediately — for example, during a video call. Toggle it from the speed-limit tile on the Dashboard or from the system tray menu.
+  </Tab>
+  <Tab title="auto">
+    Motrix evaluates the configured triggers (schedule, adaptive bandwidth measurement, video-app detection) and switches between the **base** and **alt** profiles automatically. Multiple triggers can be active at once; any single trigger activating causes the **alt** profile to be applied.
+  </Tab>
+</Tabs>
+
+## Schedule
+
+When `turtle` is set to `auto`, the schedule trigger can activate the **alt** profile during a recurring daily window. Configure it in **Settings → Speed Limits → Auto → Schedule**:
+
+| Setting | Type | Default | Description |
+|---|---|---|---|
+| `auto.schedule.enabled` | boolean | `false` | Enable the schedule trigger |
+| `auto.schedule.from` | `HH:MM` (local time) | `23:00` | Time at which the alt profile activates |
+| `auto.schedule.to` | `HH:MM` (local time) | `07:00` | Time at which the base profile restores |
+| `auto.schedule.days` | int array, 0–6 | `[]` (every day) | Days the schedule applies — `0` = Sunday … `6` = Saturday; empty array means every day |
+
+The `from`/`to` window wraps past midnight when `to` is earlier than `from` (for example, `23:00` → `07:00` covers overnight).
+
+## Adaptive Mode
+
+Adaptive mode runs a speed test against a configurable provider to measure your actual available bandwidth, then sets the **alt** profile's limits to leave a configurable headroom percentage free for other traffic. It is designed for shared connections where you want Motrix to be a good network citizen without manually tuning bytes-per-second values.
+
+Configure it in **Settings → Speed Limits → Auto → Adaptive**:
+
+| Setting | Type / Range | Default | Description |
+|---|---|---|---|
+| `auto.adaptive.enabled` | boolean | `false` | Enable adaptive bandwidth calibration |
+| `auto.adaptive.headroomPercent` | 1–100 | `80` | Percentage of measured bandwidth reserved for other traffic; Motrix uses the remainder |
+| `auto.adaptive.linkDown` | bytes/s | `0` | Last measured download speed (updated automatically; `0` = not yet measured) |
+| `auto.adaptive.linkUp` | bytes/s | `0` | Last measured upload speed |
+
+### Speed Test Settings
+
+The speed test that powers adaptive mode is configurable:
+
+| Setting | Type / Range | Default | Description |
+|---|---|---|---|
+| `auto.adaptive.speedTest.selectedProviderId` | `cloudflare` / `apple` | `cloudflare` | Speed test endpoint to use |
+| `auto.adaptive.speedTest.concurrency` | 1–16 | `4` | Parallel connections during the speed test |
+| `auto.adaptive.speedTest.maxDurationSec` | 1–60 s | `10` | Hard time limit per speed test run |
+| `auto.adaptive.speedTest.maxDataMB` | 1–10 240 MB | `1024` | Data cap per speed test run to avoid excess usage |
+
+Built-in providers:
+
+| Provider ID | Label | Notes |
+|---|---|---|
+| `cloudflare` | Cloudflare | Both download and upload endpoints available |
+| `apple` | Apple | Download-only (no upload endpoint) |
+
+## Video-App Detection
+
+When `turtle` is `auto`, Motrix can monitor the list of running processes and activate the **alt** profile whenever a video player is open. This is useful for preventing download traffic from competing with streaming or screen recording.
+
+Configure it in **Settings → Speed Limits → Auto → Video App**:
+
+| Setting | Type | Default | Description |
+|---|---|---|---|
+| `auto.videoApp.enabled` | boolean | `false` | Enable video-app detection |
+| `auto.videoApp.processNames` | string array | `[]` | Process names to watch for (e.g. `vlc`, `mpv`, `obs`, `zoom`) |
+
+When any process in the `processNames` list is detected as running, the **alt** profile is applied. When all watched processes exit, Motrix checks the other auto triggers and restores the **base** profile if none are active.
+
+<Note>
+  Process names are matched case-insensitively on all platforms. On macOS and Linux, supply the binary name without a path (e.g. `vlc`). On Windows, include the `.exe` extension (e.g. `vlc.exe`).
+</Note>

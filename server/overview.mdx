@@ -1,0 +1,69 @@
+---
+title: "Motrix Headless Server for NAS and Home Server Deployments"
+sidebarTitle: "Overview"
+description: "Run Motrix as a headless server on a NAS, home server, or VPS. The same download core powers both the desktop app and the Docker server with a Web UI."
+---
+
+Motrix Server packages the Web UI and aria2 in a Docker container for NAS and home-server deployments. The same core that drives the desktop app on macOS, Windows, and Linux runs inside the container — downloads, sessions, plugins, and the MDXP protocol are all identical. A browser is the only client you need on day one, and the full CLI and agent ecosystem are available through device-code pairing the moment you need them.
+
+## What You Get
+
+- **Web UI** accessible from any browser on your local network or through a reverse proxy
+- **MDXP JSON-RPC 2.0 endpoint** for CLI and agent clients — the same open protocol used by the desktop app
+- **Device-code pairing** for remote CLI and agent access without storing passwords in client config
+- **Non-root container with read-only root filesystem** — no privileged mode required
+- **Plugin system** — the same plugins that run in the desktop app install and persist across container replacements
+- **Multi-architecture** — a single image tag pulls the right manifest for `linux/amd64` and `linux/arm64`
+
+## Image Registries
+
+Tagged releases publish the same image to both registries. Docker Hub is the default in the included Compose files because NAS interfaces discover it with the least configuration. GHCR is a GitHub-native mirror and a useful fallback when Docker Hub is unavailable.
+
+| Registry | Image reference |
+|----------|----------------|
+| Docker Hub | `docker.io/motrixapp/motrix-server` |
+| GHCR | `ghcr.io/agalwood/motrix-server` |
+
+## Image Tags
+
+Every release publishes the same manifest digest to both registries before any floating tag is advanced. Prereleases never update `latest`, `stable`, or any floating major or minor tag.
+
+| Tag | Behavior | Use |
+|-----|----------|-----|
+| `:2.3.4` | Immutable release | Production and rollback |
+| `:2.3` | Newest stable patch in 2.3 | Automatic patch upgrades |
+| `:2` | Newest stable release in major 2 | Automatic minor and patch upgrades |
+| `:stable` | Newest stable release | Stable channel |
+| `:latest` | Same digest as `stable` | NAS UI default |
+| `:2.3.4-beta.2` | Immutable prerelease | Evaluation only |
+
+## Ports
+
+The container exposes two independent services on separate ports. They serve different clients and require separate proxy upstreams when placed behind a reverse proxy.
+
+| Port | Service |
+|------|---------|
+| `8080` | Web UI, operator API, `GET /healthz` |
+| `16801` | MDXP client endpoint (`POST /mdxp`, `GET /mdxp/events`) |
+
+## Persistent Storage
+
+The container root filesystem is read-only. All state lives in two writable mounts that survive container replacement. Keep them on separate backing stores so you can back up the small, consistency-sensitive `/data` tree independently of large downloads.
+
+| Path | Purpose | Back up? |
+|------|---------|---------|
+| `/data` | SQLite DB, settings, aria2 session and DHT state, torrent metadata, operator token, plugin packages/state/logs, and plugin secret lockbox | Yes |
+| `/downloads` | Completed and in-progress HTTP, BitTorrent, and magnet resources | According to your data policy |
+
+<CardGroup cols={2}>
+  <Card title="Docker Deployment" icon="docker" href="/server/docker-deployment">
+    Step-by-step guide to deploying Motrix Server with Docker Compose, including bind mounts, named volumes, upgrade and rollback, and health checks.
+  </Card>
+  <Card title="Environment Reference" icon="sliders" href="/server/environment-reference">
+    Complete reference for every environment variable supported by the Motrix Server image, with defaults and usage notes.
+  </Card>
+</CardGroup>
+
+<Note>
+  Prereleases never update `latest`, `stable`, or any floating major or minor tag. A `manifest unknown` or 404 error on first pull means no public image has been published yet for that tag — it is not a reason to build an unverified image from a fork.
+</Note>

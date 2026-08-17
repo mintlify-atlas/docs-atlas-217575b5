@@ -1,0 +1,172 @@
+---
+title: "Deploy Motrix Server with Docker Compose"
+sidebarTitle: "Docker Deployment"
+description: "Step-by-step guide to deploying Motrix Server on a NAS or home server using Docker Compose with bind mounts, named volumes, or a reverse proxy."
+---
+
+Motrix Server ships a `compose.yaml` that works with Docker Compose directly and with the "Project" import feature found in NAS interfaces like Synology Container Manager and fnOS. There is no local build, fixed container name, privileged mode, or host-specific Docker behavior — drop it in, set a few environment variables, and the service starts with a read-only root filesystem and a non-root user.
+
+## Prerequisites
+
+- Docker Engine with the Compose plugin (v2), or Docker Desktop
+- A NAS, home server, or VPS running `amd64` or `arm64` (64-bit only; 32-bit ARM is not supported)
+- Two writable host directories — or named volumes — for application data and downloads
+- The externally reachable URL of the Web UI (required for remote CLI/agent pairing)
+
+## Quick Start with Bind Mounts
+
+The included `compose.yaml` uses bind mounts, making downloaded files visible as ordinary host directories and easy to include in your existing backup strategy.
+
+<Steps>
+  <Step title="Create and own the mount directories">
+    Create the host directories and set their numeric ownership to match the UID and GID the container will run as. The Compose file defaults to `1000:1000`; replace `id -u` / `id -g` with explicit values if you use a dedicated service account.
+
+    ```bash
+    mkdir -p motrix-data downloads
+    export MOTRIX_UID="$(id -u)"
+    export MOTRIX_GID="$(id -g)"
+    chown "$MOTRIX_UID:$MOTRIX_GID" motrix-data downloads
+    ```
+
+    Use `sudo chown` if the current administrator does not own the directories. Never set the runtime UID to `0` or enable privileged mode just to bypass a mount permission error.
+  </Step>
+
+  <Step title="Set environment variables and pull the image">
+    Choose an image tag and set the public URL to the address remote browsers and CLI clients will use to reach the Web UI. The Compose file does not substitute a misleading localhost URL.
+
+    ```bash
+    export MOTRIX_IMAGE='docker.io/motrixapp/motrix-server:2.0.0-beta.18'
+    export MOTRIX_PUBLIC_URL='http://nas.example.lan:8080'
+    docker compose pull server
+    ```
+
+    To use GHCR or pin to an immutable digest instead:
+
+    ```bash
+    export MOTRIX_IMAGE='ghcr.io/agalwood/motrix-server:2.0.0-beta.18'
+    # or pin by digest for maximum reproducibility:
+    export MOTRIX_IMAGE='motrixapp/motrix-server@sha256:<manifest-digest>'
+    ```
+  </Step>
+
+  <Step title="Start the service">
+    Start the container and wait for it to report healthy before proceeding.
+
+    ```bash
+    docker compose up -d --wait
+    docker compose ps
+    ```
+  </Step>
+
+  <Step title="Read the operator token">
+    On first start, Motrix generates a credential at `/data/operator-token` (mode `0600`). With bind mounts, read it directly from the host:
+
+    ```bash
+    cat motrix-data/operator-token
+    ```
+
+    The same token is reused across restarts and image replacements. Keep it safe — it grants full control over the server.
+  </Step>
+
+  <Step title="Open the Web UI and log in">
+    Navigate to `http://nas.example.lan:8080` (or the value you set for `MOTRIX_PUBLIC_URL`) in any browser. Enter the operator token when prompted to unlock the interface.
+  </Step>
+</Steps>
+
+## Named Volumes (Alternative)
+
+Use `compose.named-volumes.yaml` when the NAS should manage storage locations — for example on systems where assigning a numeric UID to a host directory is difficult. Docker initialises both volumes with `1000:1000` ownership automatically, so no `chown` step is needed.
+
+```bash
+export MOTRIX_PUBLIC_URL='http://nas.example.lan:8080'
+docker compose -f compose.named-volumes.yaml pull server
+docker compose -f compose.named-volumes.yaml up -d --wait
+```
+
+<Note>
+  Do not pass `--volumes` to `docker compose down` when using named volumes — that option deletes them. Bind mounts are usually easier when downloads must also appear in a NAS shared folder.
+</Note>
+
+## Pairing the CLI Client
+
+Remote CLI and agent clients connect through a device-code pairing flow. The client displays a short code, and the operator approves it in the Web UI. Once paired, the client stores a long-lived credential and reconnects automatically.
+
+```bash
+motrix pair --name my-nas
+# Follow the prompts in your terminal.
+# When instructed, approve the code in the Motrix Web UI.
+motrix list
+```
+
+If the Web UI is temporarily unreachable, an SSH operator can approve the exact code from inside the running container without exposing any additional port:
+
+```bash
+# List pending pairing requests
+docker compose exec server motrix-admin pairing pending
+
+# Approve a specific device code
+docker compose exec server motrix-admin pairing approve ABCD-EFGH
+
+# Deny a request
+docker compose exec server motrix-admin pairing deny ABCD-EFGH
+```
+
+Start the pairing request on the client first, then enter the code shown by the client. There is intentionally no approve-all or remote-endpoint argument.
+
+## Upgrade and Rollback
+
+<Steps>
+  <Step title="Back up application data">
+    Stop the service cleanly so that SQLite and the aria2 session are consistent, create a timestamped archive of the data directory, then restart before the upgrade.
+
+    ```bash
+    docker compose stop server
+    tar -C . -czf "motrix-data-$(date +%Y%m%d).tar.gz" motrix-data
+    docker compose start server
+    ```
+  </Step>
+
+  <Step title="Pull the new image and replace the container">
+    ```bash
+    docker compose pull server
+    docker compose up -d --wait
+    docker compose ps
+    ```
+
+    The two mounts, generated operator token, downloads, aria2 session state, and installed plugins are all preserved.
+  </Step>
+
+  <Step title="Roll back if needed">
+    Set `MOTRIX_IMAGE` to the previous immutable tag or digest and recreate the service. If the newer version migrated persistent state, restore the matching `/data` backup before starting the older image.
+
+    ```bash
+    export MOTRIX_IMAGE='docker.io/motrixapp/motrix-server:2.0.0-beta.17'
+    docker compose up -d --wait
+    ```
+
+    Do not assume an older binary can read state written by a newer release. Always restore from the backup that matches the image you are rolling back to.
+  </Step>
+</Steps>
+
+## Health Check
+
+`GET /healthz` is public and only returns success after the HTTP service and aria2 are both ready. The `/api/diagnostics` endpoint requires the operator token and reports engine status, effective storage paths, allowed download roots, runtime UID, plugin status, and FFmpeg detection.
+
+```bash
+TOKEN="$(cat motrix-data/operator-token)"
+
+# Public health probe
+curl --fail http://127.0.0.1:8080/healthz
+
+# Detailed diagnostics (requires operator token)
+curl --fail \
+  --header "Authorization: Bearer ${TOKEN}" \
+  http://127.0.0.1:8080/api/diagnostics
+
+# Tail container logs
+docker compose logs --tail=200 server
+```
+
+<Warning>
+  Never run the container as root (UID 0) or with privileged mode. Always set proper ownership on mount directories to match the runtime UID before starting the service. A mount permission error is corrected by fixing ownership — not by escalating the container's privileges.
+</Warning>

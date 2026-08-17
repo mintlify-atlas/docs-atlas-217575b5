@@ -1,0 +1,108 @@
+---
+title: "Motrix Browser Extension for Chrome and Firefox"
+sidebarTitle: "Browser Extension"
+description: "The Motrix browser extension intercepts downloads in Chrome and Firefox (Manifest V3) and hands them off to Motrix in one click, using native messaging for secure pairing."
+---
+
+The Motrix browser extension intercepts downloads in your browser and sends them to the Motrix desktop app in a single click. It works in Chrome (and all Chromium-based browsers) as well as Firefox, built on Manifest V3. The extension pairs securely with the desktop app via native messaging — no manual configuration of ports or tokens required.
+
+<Warning>
+  The browser extension pairs only with the Motrix desktop app via native
+  messaging. The Docker headless server does not support first-time extension
+  pairing. Use the CLI with the device-code flow for remote/headless instances.
+</Warning>
+
+## Installation
+
+<Steps>
+  <Step title="Install the Motrix desktop app">
+    Download and install Motrix from [motrix.app](https://motrix.app). The native messaging host is bundled with the desktop app and registers itself automatically on first launch.
+  </Step>
+  <Step title="Install the browser extension">
+    Install the Motrix extension from the **Chrome Web Store** (for Chrome, Edge, and other Chromium browsers) or from **Firefox Add-ons** for Firefox.
+  </Step>
+  <Step title="Complete first-use pairing">
+    The first time you intercept a download, the extension initiates pairing automatically via native messaging. A pairing request appears in the Motrix app — approve it to trust the extension. No further setup is needed.
+  </Step>
+</Steps>
+
+## How It Works
+
+The extension does not communicate with Motrix directly over a raw network socket. Instead, it uses a three-part bridge:
+
+<CardGroup cols={3}>
+  <Card title="Browser Extension" icon="puzzle-piece">
+    Intercepts download events and sends requests through the browser's native messaging API.
+  </Card>
+  <Card title="Native Host" icon="desktop">
+    A small companion process registered with the OS that receives messages from the browser and forwards them to the Motrix app over a local WebSocket.
+  </Card>
+  <Card title="Motrix App" icon="arrow-down-to-bracket">
+    Runs the local WebSocket bridge server. When `browserBridgeEnabled` is `true` (the default), it listens for connections from the native host and processes incoming download requests.
+  </Card>
+</CardGroup>
+
+The `browserBridgeEnabled` setting can be toggled in **Settings → Integration**. When disabled, the native host will still launch but the app will reject incoming bridge connections.
+
+## Pairing
+
+Pairing happens once per browser profile and extension install. The process is:
+
+1. The extension sends an initial `/pair` handshake through the native host to the app.
+2. Motrix displays a pairing approval prompt identifying the browser and extension version.
+3. You approve the request in the Motrix UI. The extension is then trusted for all future sessions.
+
+Pairing is bound to the extension's browser identity — internally keyed as `${browser}:${extensionId}` (for example, `chromium:abcdefghijklmnop...`). This means:
+- Chrome/Chromium and Firefox extensions are tracked separately.
+- Reinstalling the extension or using a different browser profile generates a new pairing request.
+
+## Managing Paired Extensions
+
+You can view and revoke paired extensions at any time in **Settings → Integration**.
+
+| Action | Protocol command |
+|---|---|
+| List all paired extensions | `bridge:listPaired` |
+| Revoke a paired extension | `bridge:revokePair` |
+| List trusted extension IDs | `bridge:listTrusted` |
+
+Each paired client shows its browser (`chromium` or `firefox`), extension ID, the time it was paired, and the last time it was active. Revoking a paired extension requires it to go through the pairing flow again before it can send downloads to Motrix.
+
+## Flatpak Linux Users
+
+On Linux, the standard Motrix `.deb` and `.rpm` packages install the native messaging host directly on the host system. If you are using the **Flatpak** distribution, the Flatpak sandbox prevents the app from writing browser manifests to host-level directories. You need the separate `motrix-flatpak-native-host` companion.
+
+<Steps>
+  <Step title="Install the Motrix Flatpak first">
+    Install Motrix from Flathub or the GitHub Release before proceeding.
+  </Step>
+  <Step title="Download the companion archive">
+    From the same Motrix GitHub Release, download the archive that matches your CPU architecture:
+    - `Motrix-Native-Host-<version>-linux-x64.tar.gz`
+    - `Motrix-Native-Host-<version>-linux-arm64.tar.gz`
+  </Step>
+  <Step title="Extract and install">
+    ```sh
+    tar -xzf Motrix-Native-Host-<version>-linux-<arch>.tar.gz
+    cd Motrix-Native-Host-<version>-linux-<arch>
+    ./motrix-flatpak-native-host install
+    ./motrix-flatpak-native-host status
+    ```
+
+    The installer writes user-level Native Messaging manifests for Chrome, Chromium, Edge, and Firefox, and copies the companion binary to `$XDG_DATA_HOME/motrix/native-messaging/`.
+  </Step>
+</Steps>
+
+<Note>
+  The companion is a native executable with no dependency on Node.js or an
+  interpreter from `PATH`. Installation is an explicit host-user action —
+  the Flatpak app cannot install this component itself. After upgrading the
+  companion archive, run `install --force` then `status` to confirm the
+  update took effect.
+</Note>
+
+To remove the companion, its configuration, and all managed browser manifests:
+
+```sh
+./motrix-flatpak-native-host uninstall
+```

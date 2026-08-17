@@ -1,0 +1,244 @@
+---
+title: "Speed Limit Settings Reference: Profiles, Turtle Mode, and Scheduling"
+sidebarTitle: "Speed Limit Settings"
+description: "Reference for Motrix speed limit settings including base/alt profiles, turtle mode, schedule, adaptive bandwidth, and video-app detection."
+---
+
+Speed limit settings control the maximum download and upload rates applied to the aria2 engine. All speed values are in **bytes per second**; `0` means unlimited. Settings live in the `speedLimit` namespace of the Motrix settings store and are validated through `speedLimitSettingsSchema` (Zod). Changes are applied to the running engine via a hot RPC update — no restart is required.
+
+<Info>
+  Speed limits are global caps applied across all active download tasks. You cannot currently set per-task speed limits through the settings namespace; use the task context menu for that.
+</Info>
+
+---
+
+## Speed Profiles
+
+Motrix maintains two speed profiles: a **base** profile that is always active, and an **alt** (alternative) profile used during turtle mode.
+
+### Base Profile (`base`)
+
+The base profile is the default limit used when turtle mode is `off` and no auto-mode trigger is active.
+
+<ParamField path="base.download" type="number (bytes/s)" default="0 (unlimited)">
+  Maximum download speed during normal operation. `0` means no cap.
+</ParamField>
+
+<ParamField path="base.upload" type="number (bytes/s)" default="0 (unlimited)">
+  Maximum upload (seeding) speed during normal operation. `0` means no cap.
+</ParamField>
+
+### Alt Profile (`alt`)
+
+The alt profile is applied when turtle mode is `on` or when an auto-mode trigger (schedule, video app, or adaptive) fires.
+
+<ParamField path="alt.download" type="number (bytes/s)" default="524288 (512 KB/s)">
+  Maximum download speed while turtle mode is active.
+</ParamField>
+
+<ParamField path="alt.upload" type="number (bytes/s)" default="65536 (64 KB/s)">
+  Maximum upload speed while turtle mode is active.
+</ParamField>
+
+---
+
+## Turtle Mode
+
+<ParamField path="turtle" type='"off" | "on" | "auto"' default='"off"'>
+  Controls whether and how the alt speed profile is applied.
+
+  | Value | Behaviour |
+  |-------|-----------|
+  | `off` | Always use the base profile |
+  | `on` | Always use the alt profile (manual throttle) |
+  | `auto` | Switch to the alt profile automatically when a trigger fires (schedule, video app detection, or adaptive calibration) |
+
+  <Tip>
+    Set `turtle` to `auto` and configure one or more triggers in `auto.*` to have Motrix throttle itself intelligently — for example, only throttle during overnight hours or while a video player is running.
+  </Tip>
+</ParamField>
+
+---
+
+## Auto Schedule (`auto.schedule`)
+
+When `turtle` is `auto`, Motrix switches to the alt profile during a configured daily time window.
+
+<ParamField path="auto.schedule.enabled" type="boolean" default="false">
+  Enable time-based automatic throttling.
+</ParamField>
+
+<ParamField path="auto.schedule.from" type="string (HH:MM)" default='"23:00"'>
+  Local time when throttling begins. Format: 24-hour `HH:MM` (e.g. `"23:00"`).
+</ParamField>
+
+<ParamField path="auto.schedule.to" type="string (HH:MM)" default='"07:00"'>
+  Local time when throttling ends. Format: 24-hour `HH:MM` (e.g. `"07:00"`). When `to` is earlier than `from` the window wraps past midnight (e.g. 23:00 → 07:00 covers overnight).
+</ParamField>
+
+<ParamField path="auto.schedule.days" type="integer[] (0–6)" default="[] (every day)">
+  Days of the week on which the schedule is active. `0` = Sunday, `1` = Monday … `6` = Saturday. An empty array means every day when the schedule is enabled.
+
+  ```json
+  [1, 2, 3, 4, 5]
+  ```
+  The example above restricts the schedule to weekdays only.
+</ParamField>
+
+---
+
+## Video App Detection (`auto.videoApp`)
+
+When `turtle` is `auto`, Motrix can watch for video player processes and switch to the alt profile while they are running — so streaming or playback is never disrupted by download saturation.
+
+<ParamField path="auto.videoApp.enabled" type="boolean" default="false">
+  Enable process-based video app detection.
+</ParamField>
+
+<ParamField path="auto.videoApp.processNames" type="string[]" default="[]">
+  List of process names (without path or extension) to watch for. When any listed process is running, the alt speed profile is applied.
+
+  ```json
+  ["vlc", "mpv", "Netflix", "QuickTime Player", "IINA"]
+  ```
+
+  <Note>
+    Process name matching is case-sensitive on Linux and case-insensitive on macOS and Windows. Use the exact name as it appears in your system's process list.
+  </Note>
+</ParamField>
+
+---
+
+## Adaptive Mode (`auto.adaptive`)
+
+Adaptive mode measures your actual link capacity and automatically sets the alt profile to a fraction of that capacity, so Motrix never fully saturates your connection.
+
+<ParamField path="auto.adaptive.enabled" type="boolean" default="false">
+  Enable adaptive bandwidth management.
+</ParamField>
+
+<ParamField path="auto.adaptive.linkDown" type="number (bytes/s)" default="0">
+  Measured download capacity of your link. Set by the built-in speed test or entered manually. `0` means no measurement is available and adaptive mode will not constrain download speed.
+</ParamField>
+
+<ParamField path="auto.adaptive.linkUp" type="number (bytes/s)" default="0">
+  Measured upload capacity of your link. `0` means no measurement is available.
+</ParamField>
+
+<ParamField path="auto.adaptive.headroomPercent" type="integer (1–100)" default="80">
+  The percentage of `linkDown` / `linkUp` that Motrix is allowed to consume. The remaining bandwidth is kept free for other applications. For example, with `linkDown = 100 MB/s` and `headroomPercent = 80`, the adaptive alt download limit is `80 MB/s`.
+</ParamField>
+
+---
+
+## Speed Test (`auto.adaptive.speedTest`)
+
+The speed test subsystem calibrates `linkDown` and `linkUp` automatically. It ships two built-in providers and supports additional custom providers.
+
+<ParamField path="auto.adaptive.speedTest.selectedProviderId" type="string" default='"cloudflare"'>
+  The ID of the provider used when running a speed test. Must match the `id` field of one of the objects in `providers`.
+</ParamField>
+
+<ParamField path="auto.adaptive.speedTest.concurrency" type="integer" default="4">
+  Number of parallel streams used during a speed test. Range: **1–16**. Higher concurrency produces a more realistic peak bandwidth measurement on high-speed connections.
+</ParamField>
+
+<ParamField path="auto.adaptive.speedTest.maxDurationSec" type="integer (seconds)" default="10">
+  Hard time limit per speed test run. Range: **1–60**. The test stops and reports results when this duration is reached, even if `maxDataMB` has not been transferred.
+</ParamField>
+
+<ParamField path="auto.adaptive.speedTest.maxDataMB" type="integer (MB)" default="1024">
+  Maximum data transferred per speed test run. Range: **1–10240 MB**. The test stops when this cap is reached, even if `maxDurationSec` has not elapsed.
+</ParamField>
+
+<ParamField path="auto.adaptive.speedTest.providers" type="SpeedTestProvider[]" default="(Cloudflare + Apple)">
+  Array of speed test provider objects. Motrix ships two providers:
+
+  | ID | Label | Download URL | Upload URL |
+  |----|-------|--------------|------------|
+  | `cloudflare` | Cloudflare | `https://speed.cloudflare.com/__down` (with `bytes` size param) | `https://speed.cloudflare.com/__up` |
+  | `apple` | Apple | `https://mensura.cdn-apple.com/api/v1/gm/large` | *(not supported)* |
+
+  Each provider object follows this shape:
+
+  ```ts
+  interface SpeedTestProvider {
+    id: string
+    label: string
+    download: { url: string; sizeParam?: string } | null
+    upload: { url: string } | null
+  }
+  ```
+</ParamField>
+
+---
+
+## Full Default Configuration
+
+```json
+{
+  "base": {
+    "download": 0,
+    "upload": 0
+  },
+  "alt": {
+    "download": 524288,
+    "upload": 65536
+  },
+  "turtle": "off",
+  "auto": {
+    "schedule": {
+      "enabled": false,
+      "from": "23:00",
+      "to": "07:00",
+      "days": []
+    },
+    "videoApp": {
+      "enabled": false,
+      "processNames": []
+    },
+    "adaptive": {
+      "enabled": false,
+      "linkDown": 0,
+      "linkUp": 0,
+      "headroomPercent": 80,
+      "speedTest": {
+        "selectedProviderId": "cloudflare",
+        "concurrency": 4,
+        "maxDurationSec": 10,
+        "maxDataMB": 1024
+      }
+    }
+  }
+}
+```
+
+---
+
+## Applying Speed Limits via IPC
+
+```ts
+import { ipcRenderer } from 'electron'
+
+// Enable turtle mode manually
+ipcRenderer.invoke('command:updateSettings', {
+  speedLimit: {
+    turtle: 'on',
+  },
+})
+
+// Configure overnight throttle schedule
+ipcRenderer.invoke('command:updateSettings', {
+  speedLimit: {
+    turtle: 'auto',
+    auto: {
+      schedule: {
+        enabled: true,
+        from: '22:00',
+        to: '08:00',
+        days: [],
+      },
+    },
+  },
+})
+```

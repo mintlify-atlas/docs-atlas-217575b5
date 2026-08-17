@@ -1,0 +1,96 @@
+---
+title: "HTTP and FTP Downloads with Multi-Connection Support"
+sidebarTitle: "Downloads"
+description: "Motrix uses a bundled aria2 engine to download files over HTTP, HTTPS, and FTP with split connections, retries, and SQLite-backed session recovery."
+---
+
+Motrix handles HTTP, HTTPS, and FTP downloads through a bundled, Motrix-maintained fork of the [aria2](https://github.com/motrixapp/aria2) download engine. Rather than opening a single connection per file, aria2 splits each file into segments and fetches them in parallel across multiple connections — dramatically improving throughput on fast links and making partial progress resilient to transient network errors.
+
+## How Downloads Work
+
+When you add a task, Motrix hands the URL to the aria2 engine over a local JSON-RPC channel. aria2 opens up to `split` parallel segments per file, capped at `maxConnectionPerServer` connections to any single host. Each segment is fetched independently; if a segment fails, aria2 retries it up to `maxTries` times with a `retryWait` pause between attempts.
+
+The number of simultaneous downloads across all tasks is controlled by `maxConcurrentDownloads`. Additional tasks queue automatically and start as active downloads finish.
+
+<Tip>
+  Set `split` to `16` and `maxConnectionPerServer` to `16` for the fastest single-file downloads on fast connections. Both values default to `16`, so you only need to change them if you have reduced them previously.
+</Tip>
+
+## Adding a Download
+
+Open the **Add Task** dialog from the toolbar or by pressing the keyboard shortcut. Fill in the following fields:
+
+<Steps>
+  <Step title="Paste the URL">
+    Enter one or more HTTP, HTTPS, or FTP URLs. Motrix accepts a single URL or a newline-separated list of mirrors for the same file.
+  </Step>
+  <Step title="Choose a save directory">
+    The default save location is pre-filled from **Settings → General → Default Save Directory**. Override it per task using the folder picker.
+  </Step>
+  <Step title="Set an optional filename">
+    Leave blank to use the filename inferred from the URL or the server's `Content-Disposition` header. Specify a name to rename the file on disk.
+  </Step>
+  <Step title="Set optional request headers">
+    Expand **Advanced** to provide a custom `Cookie` header, a `Referer` URL, or a per-task `User-Agent` string. These are forwarded verbatim with every segment request.
+  </Step>
+</Steps>
+
+## Download Options
+
+The following engine settings govern download behaviour. Settings marked **HOT** take effect immediately via aria2's RPC `changeGlobalOption`; settings marked **RESTART** require restarting the aria2 engine.
+
+| Setting | Range / Type | Default | Notes |
+|---|---|---|---|
+| `maxConcurrentDownloads` | 1–100 (int) | `5` | HOT — maximum number of active downloads at once |
+| `maxConnectionPerServer` | 1–16 (int) | `16` | HOT — connections per server per download |
+| `split` | 1–128 (int) | `16` | HOT — segments to split each file into |
+| `minSplitSize` | ≥1 048 576 bytes | `10 485 760` (10 MB) | HOT — file must be at least this size to split |
+| `connectTimeout` | 1–600 s | `30` | HOT — TCP connection establishment timeout |
+| `socketTimeout` | 1–600 s | `30` | HOT — socket inactivity timeout |
+| `maxTries` | 0–100 (int) | `5` | HOT — retry attempts per segment (`0` = unlimited) |
+| `retryWait` | 0–300 s | `10` | HOT — pause between retry attempts |
+| `userAgent` | string | `Motrix/2.0` | HOT — `User-Agent` header sent with HTTP requests |
+| `lowestSpeedLimit` | ≥0 bytes/s | `0` | HOT — abort a download if speed stays below this for 60 s (`0` = disabled) |
+
+### File Allocation
+
+The `fileAllocation` setting controls how aria2 reserves disk space before writing data:
+
+| Value | Behaviour |
+|---|---|
+| `none` (default) | No pre-allocation; fastest to start |
+| `prealloc` | `fallocate()` / `F_PREALLOCATE` — instant on supported filesystems |
+| `falloc` | POSIX `fallocate` — fast on Linux ext4/xfs; not available on macOS |
+| `trunc` | `ftruncate` — extends the file without allocating physical blocks |
+
+Disk write buffering is controlled by `diskCache` (0–128 MB, default 64 MB). A larger cache reduces random I/O at the cost of memory.
+
+## Session Recovery
+
+Motrix uses SQLite-backed session persistence so that downloads survive unexpected quits and system restarts. The relevant settings are:
+
+| Setting | Type | Default | Notes |
+|---|---|---|---|
+| `sqlite3Persistence` | boolean | `true` | RESTART — enable SQLite session storage |
+| `sqlite3DbPath` | string (path) | `''` | RESTART — path to the `.db` file; empty string uses the app data directory |
+| `sqlite3HistoryLimit` | int, −1–1 000 000 | `−1` | RESTART — completed tasks to retain in history (`−1` = unlimited) |
+| `sessionSaveInterval` | 10–3600 s | `15` | HOT — how often aria2 checkpoints in-flight state |
+
+When `sqlite3Persistence` is enabled, the engine writes a checkpoint every `sessionSaveInterval` seconds. On next launch, all unfinished downloads are restored and resume automatically from their last checkpointed byte range — no re-downloading of already-received data.
+
+Setting `sqlite3HistoryLimit` to a positive integer caps the number of completed entries retained in the database, which keeps the file size predictable on long-running installs.
+
+## GeoIP Peer Locations
+
+For BitTorrent tasks, Motrix can display a country flag beside each peer's IP address. This feature requires a local GeoIP database and is **disabled by default** to avoid a large background download on first launch.
+
+Enable it in **Settings → GeoIP** and choose a source:
+
+| Source ID | Description |
+|---|---|
+| `loyalsoldier` (default) | Community-maintained database hosted by Loyalsoldier |
+| `p3terx` | Alternative community mirror |
+| `maxmind` | Official MaxMind GeoLite2 database — requires a free licence key |
+| `custom` | Any MMDB-format database at a URL you supply |
+
+Once downloaded, the database is cached locally and refreshed automatically every 7 days (`autoUpdateIntervalDays`, range 1–365). GeoIP data is used only for the peer-location display; it is never sent to external services.
